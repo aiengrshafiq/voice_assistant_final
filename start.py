@@ -1,9 +1,3 @@
-import os
-import sys
-
-# Suppress ALSA warnings
-sys.stderr = open(os.devnull, 'w')
-
 from app.services.wake_word import listen_for_wake_word
 from app.pipelines.assistant_runner import run_voice_assistant
 from app.core.logger import get_logger
