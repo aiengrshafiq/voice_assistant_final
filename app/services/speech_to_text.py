@@ -2,7 +2,9 @@
 
 import speech_recognition as sr
 import logging
-from app.core import settings  # adjust import if needed
+#from app.core import settings  # adjust import if needed
+from app.core.config import get_settings
+settings = get_settings()
 
 def listen_command():
     recognizer = sr.Recognizer()
