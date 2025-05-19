@@ -2,6 +2,8 @@ import requests
 from app.core.config import get_settings
 from app.core.logger import get_logger
 
+from app.services.calendar_manager import add_event,get_todays_events
+
 logger = get_logger(__name__)
 settings = get_settings()
 
@@ -106,6 +108,20 @@ def execute_device_action(intent: str, parameters: dict) -> str:
             if domain == "media_player":
                 return call_service(domain, "media_stop", payload , intent)
             return call_service(domain, "turn_off", payload , intent)
+
+        elif intent == "get_schedule":
+            return get_todays_events()
+        elif intent == "create_event":
+            import datetime
+
+            start = datetime.datetime.now() + datetime.timedelta(minutes=5)
+            end = start + datetime.timedelta(minutes=30)
+
+            start_str = start.isoformat()
+            end_str = end.isoformat()
+            logger.warning(f"Adding event for {start_str} and {end_str}")
+            result = add_event("Test Meeting", start_str, end_str)
+            #return add_event(parameters['summary'], parameters['start'], parameters['end'])
         
 
     except Exception as e:

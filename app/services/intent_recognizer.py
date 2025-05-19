@@ -14,7 +14,8 @@ VALID_INTENTS = {
     "turn_on_plug", "turn_off_plug",
     "set_thermostat",
     "set_reminder",
-    "turn_on_speaker", "turn_off_speaker"
+    "turn_on_speaker", "turn_off_speaker",
+    "get_schedule", "create_event"
 }
 
 def detect_intent(user_input: str):

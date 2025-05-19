@@ -10,23 +10,23 @@ settings = get_settings()
 
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 
+from google_auth_oauthlib.flow import InstalledAppFlow
+
+
+
+
 def get_calendar_service():
     creds = None
     token_path = "token.json"
-    creds_path = settings.GOOGLE_CREDENTIALS_PATH
+    creds_path = "credentials.json"  # adjust if needed
 
     if os.path.exists(token_path):
         creds = Credentials.from_authorized_user_file(token_path, SCOPES)
-    elif os.path.exists(creds_path):
-        from google_auth_oauthlib.flow import InstalledAppFlow
+    else:
         flow = InstalledAppFlow.from_client_secrets_file(creds_path, SCOPES)
-        creds = flow.run_local_server(port=0)
+        creds = flow.run_console()
         with open(token_path, 'w') as token:
             token.write(creds.to_json())
-
-    if not creds or not creds.valid:
-        logger.error("Google credentials are missing or invalid.")
-        return None
 
     return build('calendar', 'v3', credentials=creds)
 
