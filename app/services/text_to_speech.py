@@ -20,8 +20,8 @@ def speak(text: str):
         engine.runAndWait()
 
         # Play using specified speaker device
-        #subprocess.run(["aplay", "-D", settings.SPEAKER_DEVICE, OUTPUT_FILE], check=True)
         subprocess.run(["paplay", "--device=" + settings.SPEAKER_DEVICE, OUTPUT_FILE], check=True)
+        
 
     except subprocess.CalledProcessError as e:
         logger.error(f"Playback error: {e}")

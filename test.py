@@ -1,17 +1,11 @@
 import pyaudio
-pa = pyaudio.PyAudio()
-for i in range(pa.get_device_count()):
-    print(f"{i}: {pa.get_device_info_by_index(i)}")
 
+p = pyaudio.PyAudio()
 
-import speech_recognition as sr
+print("Available audio input devices:")
+for i in range(p.get_device_count()):
+    dev = p.get_device_info_by_index(i)
+    if dev['maxInputChannels'] > 0:
+        print(f"Input Device id {i} - {dev['name']}")
 
-r = sr.Recognizer()
-
-with sr.Microphone(device_index=0) as source:
-    print("Listening with Logi USB Headset...")
-    r.adjust_for_ambient_noise(source)
-    audio = r.listen(source, timeout=5)
-
-print("Recognizing...")
-print(r.recognize_google(audio))
+p.terminate()

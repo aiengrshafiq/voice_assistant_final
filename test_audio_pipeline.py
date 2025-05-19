@@ -6,7 +6,7 @@ from time import sleep
 
 # === CONFIG ===
 MIC_DEVICE_INDEX = 0  # Update based on `pyaudio` results
-SPEAKER_DEVICE = "plughw:2,0"  # Replace if needed (e.g., for USB/Bluetooth)
+SPEAKER_DEVICE = "bluez_output.41_42_C4_D9_12_86.1"  # Replace if needed (e.g., for USB/Bluetooth)
 OUTPUT_FILE = "output_test.wav"
 
 def record_and_transcribe():
@@ -38,7 +38,8 @@ def speak(text):
         engine.save_to_file(text, OUTPUT_FILE)
         engine.runAndWait()
         sleep(0.5)
-        subprocess.run(["aplay", "-D", SPEAKER_DEVICE, OUTPUT_FILE], check=True)
+        #subprocess.run(["paplay", "-D", SPEAKER_DEVICE, OUTPUT_FILE], check=True)
+        subprocess.run(["paplay", "--device", SPEAKER_DEVICE, OUTPUT_FILE], check=True)
     except Exception as e:
         print(f"❌ TTS error: {e}")
 

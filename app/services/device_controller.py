@@ -14,7 +14,8 @@ DOMAIN_MAP = {
     "light": "light",
     "plug": "switch",
     "thermostat": "climate",
-    "speaker": "media_player"
+    "speaker": "media_player",
+    "tv": "media_player"
 }
 
 SERVICE_MAP = {
@@ -32,8 +33,29 @@ ENTITY_MAP = {
     "hallway light": "light.hallway",
     "kitchen plug": "switch.kitchen",
     "living room speaker": "media_player.living_room",
-    "ac": "climate.main_room"
+    "ac": "climate.main_room",
+    "speaker": "media_player.office",
+    "tv": "media_player.living_room_tv",
+    "entertainment room": "climate.entertainment_room",
+    "hall": "climate.hall",
+    "left pathway": "climate.left_pathway",
+    "meeting room": "climate.meeting_room",
+    "pantry area": "climate.pantry_area"
 }
+
+
+def call_service(domain, service, payload, intent ):
+    url = f"{settings.HOME_ASSISTANT_URL}/api/services/{domain}/{service}"
+    logger.info(f"Calling: {url} with {payload}")
+    response = requests.post(url, json=payload, headers=HEADERS)
+
+    if response.status_code == 200:
+        return f"{intent.replace('_', ' ').capitalize()} successful."
+    else:
+        logger.error(f"Home Assistant error: {response.text}")
+        return "Failed to complete the action."
+
+
 
 def execute_device_action(intent: str, parameters: dict) -> str:
     try:
@@ -42,7 +64,7 @@ def execute_device_action(intent: str, parameters: dict) -> str:
             return "Unsupported action."
 
         domain, service = SERVICE_MAP[intent]
-        entity_name = parameters.get("device") or parameters.get("room") or parameters.get("target")
+        entity_name = parameters.get("device", "speaker") or parameters.get("room") or parameters.get("target")
 
         if not entity_name:
             logger.warning("No device or room specified.")
@@ -58,19 +80,33 @@ def execute_device_action(intent: str, parameters: dict) -> str:
         payload = {"entity_id": entity_id}
 
         if intent == "set_thermostat":
+            
             temperature = parameters.get("temperature")
+            room = parameters.get("room")
+            if not room or not temperature:
+                return "Please specify both room and temperature."
+        
+        
             if temperature:
                 payload["temperature"] = temperature
+            
+            logger.warning(f"Setting Thermostate Now for {domain} and {service}")
+            call_service(domain, service, payload, intent )
 
-        url = f"{settings.HOME_ASSISTANT_URL}/api/services/{domain}/{service}"
-        logger.info(f"Calling: {url} with {payload}")
-        response = requests.post(url, json=payload, headers=HEADERS)
+            
 
-        if response.status_code == 200:
-            return f"{intent.replace('_', ' ').capitalize()} successful."
-        else:
-            logger.error(f"Home Assistant error: {response.text}")
-            return "Failed to complete the action."
+        elif intent == "turn_on_speaker":
+            logger.warning(f"Turning Speaker On Now for {domain} and media_start")
+            if domain == "media_player":
+                return call_service(domain, "media_start", payload , intent)
+            return call_service(domain, "turn_on", payload , intent)
+
+        elif intent == "turn_off_speaker":
+            logger.warning(f"Turning Speaker Off Now for {domain} and media_stop")
+            if domain == "media_player":
+                return call_service(domain, "media_stop", payload , intent)
+            return call_service(domain, "turn_off", payload , intent)
+        
 
     except Exception as e:
         logger.exception("Device control failed.")

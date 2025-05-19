@@ -14,7 +14,13 @@ def listen_command():
         with sr.Microphone(device_index=device_index) as source:
             logging.info("Listening for voice command...")
             recognizer.adjust_for_ambient_noise(source)
-            audio = recognizer.listen(source, timeout=5, phrase_time_limit=10)
+            #audio = recognizer.listen(source, timeout=5, phrase_time_limit=10)
+            try:
+                audio = recognizer.listen(source, timeout=5, phrase_time_limit=10)
+            except sr.WaitTimeoutError:
+                print("Listening timed out while waiting for phrase to start")
+                return None
+            
     except AssertionError as ae:
         logging.error(f"Mic setup error: {ae}")
         return ""

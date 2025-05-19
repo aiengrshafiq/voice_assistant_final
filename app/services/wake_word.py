@@ -36,11 +36,15 @@ def listen_for_wake_word(callback):
             pcm = stream.read(porcupine.frame_length, exception_on_overflow=False)
             pcm = struct.unpack_from("h" * porcupine.frame_length, pcm)
             result = porcupine.process(pcm)
+            
 
             if result >= 0:
                 logger.info("Wake word detected!")
+                stream.stop_stream()
+                stream.close()
+                
                 callback()
-                logger.info("Listening for wake word 'Jarvis'...")
+                logger.info("Listening for wake word 'Jarvis' inside try...")
 
     except KeyboardInterrupt:
         logger.warning("Wake word listener interrupted.")
@@ -51,3 +55,4 @@ def listen_for_wake_word(callback):
         stream.close()
         pa.terminate()
         porcupine.delete()
+        porcupine.terminate()

@@ -15,4 +15,4 @@ google-auth-httplib2
 pydantic-settings
 sounddevice
 flac
-
+vosk
