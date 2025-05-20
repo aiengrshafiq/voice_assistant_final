@@ -174,3 +174,7 @@ cython_debug/
 .pypirc
 logs/
 /logs
+
+token.json
+credentials.json
+
