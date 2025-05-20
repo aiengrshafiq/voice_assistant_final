@@ -22,6 +22,8 @@ def run_voice_assistant():
 
             intent, parameters = detect_intent(command)
 
+            logger.info(f"Detected intent is {intent}")
+
             if intent == "unsupported":
                 speak("I'm not sure how to help with that. I can assist with lights, thermostat, reminders, and more.")
                 continue

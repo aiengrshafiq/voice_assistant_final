@@ -3,6 +3,8 @@ from app.core.config import get_settings
 from app.core.logger import get_logger
 
 from app.services.calendar_manager import add_event,get_todays_events
+from app.services.reminder_service import schedule_reminder
+
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -45,6 +47,9 @@ ENTITY_MAP = {
     "pantry area": "climate.pantry_area"
 }
 
+COMMON_INTENTS = {
+    "get_schedule", "create_event", "get_schedules", "add_event"
+}
 
 def call_service(domain, service, payload, intent ):
     url = f"{settings.HOME_ASSISTANT_URL}/api/services/{domain}/{service}"
@@ -58,9 +63,45 @@ def call_service(domain, service, payload, intent ):
         return "Failed to complete the action."
 
 
+def execute_common_action(intent: str, parameters: dict) -> str:
+    try:
+        if intent == "get_schedule":
+            logger.warning(f"get_schedule called {intent} ")
+            return get_todays_events()
+
+        elif intent == "create_event" or intent == "add_event":
+            summary = parameters.get("summary")
+            start = parameters.get("start_time")
+            end = parameters.get("end_time")
+            if not all([summary, start, end]):
+                return "Please mention the event title and time clearly."
+            logger.warning(f"Adding event {summary} for {start} and {end}")
+            return add_event(summary, start, end)
+        
+        elif intent == "set_reminder":
+            message = parameters.get("message", "your reminder")
+            delay = parameters.get("delay_minutes")
+            time_str = parameters.get("time")
+            return schedule_reminder(message, delay_minutes=delay, time_str=time_str)
+
+
+    except Exception as e:
+        logger.exception("Common intent execution failed.")
+        return "Something went wrong while execusting the common action."
+
+
 
 def execute_device_action(intent: str, parameters: dict) -> str:
     try:
+        logger.debug(f"Intent received: {intent}")
+        logger.debug(f"Checking against COMMON_INTENTS: {COMMON_INTENTS}")
+        intent = intent.strip().lower()
+        if intent in COMMON_INTENTS:
+            result = execute_common_action(intent, parameters)
+            return result or "Task completed."
+           
+
+
         if intent not in SERVICE_MAP:
             logger.warning(f"Unsupported intent: {intent}")
             return "Unsupported action."
@@ -109,19 +150,11 @@ def execute_device_action(intent: str, parameters: dict) -> str:
                 return call_service(domain, "media_stop", payload , intent)
             return call_service(domain, "turn_off", payload , intent)
 
-        elif intent == "get_schedule":
-            return get_todays_events()
-        elif intent == "create_event":
-            import datetime
-
-            start = datetime.datetime.now() + datetime.timedelta(minutes=5)
-            end = start + datetime.timedelta(minutes=30)
-
-            start_str = start.isoformat()
-            end_str = end.isoformat()
-            logger.warning(f"Adding event for {start_str} and {end_str}")
-            result = add_event("Test Meeting", start_str, end_str)
-            #return add_event(parameters['summary'], parameters['start'], parameters['end'])
+        
+            
+            
+            
+    
         
 
     except Exception as e:

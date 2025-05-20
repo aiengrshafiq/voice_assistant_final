@@ -3,7 +3,8 @@ from openai import OpenAI
 from app.core.logger import get_logger
 from app.core.config import get_settings
 from app.utils.prompt_templates import INTENT_PROMPT_TEMPLATE
-
+from datetime import datetime
+import re
 logger = get_logger(__name__)
 settings = get_settings()
 
@@ -15,12 +16,13 @@ VALID_INTENTS = {
     "set_thermostat",
     "set_reminder",
     "turn_on_speaker", "turn_off_speaker",
-    "get_schedule", "create_event"
+    "get_schedule","get_schedules", "create_event","add_event"
 }
 
 def detect_intent(user_input: str):
     try:
-        prompt = INTENT_PROMPT_TEMPLATE.format(user_input=user_input, valid_intents=', '.join(VALID_INTENTS))
+        today = datetime.today().strftime("%Y-%m-%d")
+        prompt = INTENT_PROMPT_TEMPLATE.format(user_input=user_input, valid_intents=', '.join(VALID_INTENTS), today_date=today)
 
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -32,8 +34,12 @@ def detect_intent(user_input: str):
 
         result = response.choices[0].message.content.strip()
         logger.debug(f"[GPT Raw Output] {result}")
-        parsed = json.loads(result)
+        # Extract valid JSON using regex (fallback)
+        match = re.search(r"\{[\s\S]+\}", result)
+        if match:
+            result = match.group(0)
 
+        parsed = json.loads(result)
         intent = parsed.get("intent")
         parameters = parsed.get("parameters", {})
 
