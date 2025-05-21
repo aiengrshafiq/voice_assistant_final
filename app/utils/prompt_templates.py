@@ -18,6 +18,10 @@ Examples:
 - "What’s on my calendar?" → intent: get_schedule, parameters: {{ "calendar": "my callendar" }}
 - "Remind me to call John in 10 minutes" → intent: set_reminder, parameters: {{ "message": "call John", "delay_minutes": 10 }}
 - "Remind me at 5:30 PM to submit report" → intent: set_reminder, parameters: {{ "message": "submit report", "time": "17:30" }}
+- "Give me my morning briefing" → intent: daily_briefing, parameters: {{}}
+- "Note that I have a meeting with Alice tomorrow" → intent: log_note, parameters: {{ "content": "I have a meeting with Alice tomorrow" }}
+- "Read my recent notes" → intent: read_notes, parameters: {{}}
+
 
 If the user talks about creating or scheduling an event, return the intent as "add_event" and extract:
 - "summary": the event title (e.g., "meeting with John")

@@ -4,6 +4,8 @@ from app.core.logger import get_logger
 
 from app.services.calendar_manager import add_event,get_todays_events
 from app.services.reminder_service import schedule_reminder
+from app.services.daily_briefing import deliver_daily_briefing
+from app.services.note_logger import log_note, read_recent_notes
 
 
 logger = get_logger(__name__)
@@ -48,7 +50,8 @@ ENTITY_MAP = {
 }
 
 COMMON_INTENTS = {
-    "get_schedule", "create_event", "get_schedules", "add_event","set_reminder"
+    "get_schedule", "create_event", "get_schedules", "add_event","set_reminder",
+    "daily_briefing","log_note","read_notes"
 }
 
 def call_service(domain, service, payload, intent ):
@@ -83,6 +86,21 @@ def execute_common_action(intent: str, parameters: dict) -> str:
             delay = parameters.get("delay_minutes")
             time_str = parameters.get("time")
             return schedule_reminder(message, delay_minutes=delay, time_str=time_str)
+
+        elif intent == "daily_briefing":
+            deliver_daily_briefing()
+            return "Briefing delivered."
+        
+        elif intent == "log_note":
+            content = parameters.get("content")
+            if not content:
+                return "What should I note down?"
+            log_note(content)
+            return "Note saved."
+
+        elif intent == "read_notes":
+            read_recent_notes()
+            return "Done reading notes."
 
 
     except Exception as e:

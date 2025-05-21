@@ -11,6 +11,7 @@ def deliver_daily_briefing():
 
         # 1. Calendar
         events = get_todays_events()
+        logger.debug(f"Todays events are:  {events}")
         speak(events)
 
         # 2. Weather
