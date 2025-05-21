@@ -48,7 +48,7 @@ ENTITY_MAP = {
 }
 
 COMMON_INTENTS = {
-    "get_schedule", "create_event", "get_schedules", "add_event"
+    "get_schedule", "create_event", "get_schedules", "add_event","set_reminder"
 }
 
 def call_service(domain, service, payload, intent ):

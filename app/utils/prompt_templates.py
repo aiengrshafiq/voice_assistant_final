@@ -16,8 +16,8 @@ Examples:
 - "Turn off the hallway light" → intent: turn_off_light, parameters: {{ "room": "hallway" }}
 - "Set the living room temperature to 23" → intent: set_thermostat, parameters: {{ "temperature": 23, "room": "living room" }}
 - "What’s on my calendar?" → intent: get_schedule, parameters: {{ "calendar": "my callendar" }}
-- "Remind me to call John in 10 minutes" → intent: set_reminder, parameters: { "message": "call John", "delay_minutes": 10 }
-- "Remind me at 5:30 PM to submit report" → intent: set_reminder, parameters: { "message": "submit report", "time": "17:30" }
+- "Remind me to call John in 10 minutes" → intent: set_reminder, parameters: {{ "message": "call John", "delay_minutes": 10 }}
+- "Remind me at 5:30 PM to submit report" → intent: set_reminder, parameters: {{ "message": "submit report", "time": "17:30" }}
 
 If the user talks about creating or scheduling an event, return the intent as "add_event" and extract:
 - "summary": the event title (e.g., "meeting with John")

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from app.services.text_to_speech import speak
 from app.core.logger import get_logger
 from app.services.notifier import send_email_notification
+from threading import Thread
 
 logger = get_logger(__name__)
 scheduler = BackgroundScheduler()
@@ -33,8 +34,18 @@ def schedule_reminder(message: str, delay_minutes: int = None, time_str: str = N
     logger.info(f"Scheduled reminder at {trigger_time}: {message}")
     return f"Reminder set for {trigger_time.strftime('%I:%M %p')}."
 
-
 def deliver_reminder(message: str):
-    logger.info(f"Delivering reminder: {message}")
-    speak(f"Reminder: {message}")
-    send_email_notification(subject="Reminder Alert", html_content=f"<p>{message}</p>")
+    def _task():
+        logger.info(f"Delivering reminder: {message}")
+        speak(f"Reminder: {message}")
+        send_email_notification(subject="Reminder Alert", html_content=f"<p>{message}</p>")
+
+    # Run the actual task in a thread to avoid blocking
+    Thread(target=_task).start()
+
+# def deliver_reminder(message: str):
+#     logger.info(f"Delivering reminder: {message}")
+#     speak(f"Reminder: {message}")
+#     send_email_notification(subject="Reminder Alert", html_content=f"<p>{message}</p>")
+#     return "Reminder delivered."
+    
