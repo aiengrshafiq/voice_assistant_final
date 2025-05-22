@@ -14,5 +14,7 @@ google-auth-oauthlib
 google-auth-httplib2
 pydantic-settings
 sounddevice
-flac
+#flac
 vosk
+gTTS
+ffmpeg-python

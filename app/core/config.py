@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     DB_PATH: str = "assistant.db"
     HOME_ASSISTANT_URL: str = "http://localhost:8123"
     HOME_ASSISTANT_TOKEN: str = ""
+    TTS_ENGINE: str = "gtts"  # "gtts" or "pyttsx3"
     # ✅ Add missing .env fields
     NOTIFY_EMAIL: str = ""
     BREVO_API_KEY: str = ""
