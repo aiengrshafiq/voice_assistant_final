@@ -4,6 +4,8 @@ from app.pipelines.assistant_runner import run_voice_assistant
 #from app.utils.db import init_note_db
 import subprocess
 from app.core.logger import get_logger
+from app.core.config import get_settings
+settings = get_settings()
 
 logger = get_logger(__name__)
 
@@ -22,8 +24,11 @@ def main():
     #schedule_daily_briefing()
     #init_note_db()
     # Run voice authentication before launching assistant
-    # if subprocess.call(["python3", "scripts/voice_auth_startup.py"]) != 0:
-    #     exit(1)  # Stop assistant if not authenticated
+    if settings.AUTH_ENABLED:
+        if subprocess.call(["python3", "scripts/voice_auth_startup.py"]) != 0:
+            exit(1)
+    else:
+        logger.info("Voice authentication is DISABLED via config.")
 
     listen_for_wake_word(callback=run_voice_assistant)
 

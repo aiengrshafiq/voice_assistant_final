@@ -12,11 +12,14 @@ settings = get_settings()
 
 def run_voice_assistant():
     try:
-        # disable it for now
-        # user = get_verified_user()
-        # if not user:
-        #     speak("You are not authorized to use the assistant.")
-        #     return
+        if settings.AUTH_ENABLED:
+            user = get_verified_user()
+            if not user:
+                speak("You are not authorized to use the assistant.")
+                return
+        else:
+            logger.info("[Auth] Skipping user verification (AUTH_ENABLED is false)")
+
 
         speak("Voice assistant initialized. How can I help you today?")
         while True:

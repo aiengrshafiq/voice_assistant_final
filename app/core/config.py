@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     HOME_ASSISTANT_TOKEN: str = ""
     TTS_ENGINE: str = "gtts"  # "gtts" or "pyttsx3"
     AUTHORIZED_VOICE_LABELS: str = "CEO,Shafiq,Nouman"  # Comma-separated
+    AUTH_ENABLED: bool = False
     # ✅ Add missing .env fields
     NOTIFY_EMAIL: str = ""
     BREVO_API_KEY: str = ""
