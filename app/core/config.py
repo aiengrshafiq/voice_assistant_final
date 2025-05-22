@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     HOME_ASSISTANT_URL: str = "http://localhost:8123"
     HOME_ASSISTANT_TOKEN: str = ""
     TTS_ENGINE: str = "gtts"  # "gtts" or "pyttsx3"
+    AUTHORIZED_VOICE_LABELS: str = "CEO,Shafiq,Nouman"  # Comma-separated
     # ✅ Add missing .env fields
     NOTIFY_EMAIL: str = ""
     BREVO_API_KEY: str = ""

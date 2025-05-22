@@ -5,12 +5,19 @@ from app.services.text_to_speech import speak
 from app.services.intent_recognizer import detect_intent
 from app.services.device_controller import execute_device_action
 from app.services.confirmation import confirm_action
+from app.core.session import get_verified_user
 
 logger = get_logger(__name__)
 settings = get_settings()
 
 def run_voice_assistant():
     try:
+        # disable it for now
+        # user = get_verified_user()
+        # if not user:
+        #     speak("You are not authorized to use the assistant.")
+        #     return
+
         speak("Voice assistant initialized. How can I help you today?")
         while True:
             command = listen_command()

@@ -2,6 +2,7 @@ from app.services.wake_word import listen_for_wake_word
 from app.pipelines.assistant_runner import run_voice_assistant
 #from app.services.scheduler import schedule_daily_briefing
 #from app.utils.db import init_note_db
+import subprocess
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -16,10 +17,14 @@ def log_audio_devices():
 
 def main():
     logger.info("Starting voice assistant...")
-    log_audio_devices()
+    #log_audio_devices()
     #uncomment below if you want automatic daily briefing
     #schedule_daily_briefing()
     #init_note_db()
+    # Run voice authentication before launching assistant
+    # if subprocess.call(["python3", "scripts/voice_auth_startup.py"]) != 0:
+    #     exit(1)  # Stop assistant if not authenticated
+
     listen_for_wake_word(callback=run_voice_assistant)
 
 if __name__ == "__main__":
