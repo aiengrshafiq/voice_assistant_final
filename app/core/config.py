@@ -1,9 +1,11 @@
 # config.py
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
+from pathlib import Path
 import os
 from dotenv import load_dotenv
 load_dotenv()
+env_path = Path(".") / ".env"
 
 class Settings(BaseSettings):
     OPENAI_API_KEY: str
@@ -25,6 +27,10 @@ class Settings(BaseSettings):
     # ✅ Add missing .env fields
     NOTIFY_EMAIL: str = ""
     BREVO_API_KEY: str = ""
+    USER_LANGUAGE: str = "en-US"
+    WAKE_WORD: str = "jarvis"
+    SLACK_BOT_TOKEN: str = "YOUR_SLACK_TOKEN_HERE" # Placeholder
+    VOICE_AUTH_THRESHOLD: float = 0.85
     
 
     class Config:

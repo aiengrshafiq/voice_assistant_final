@@ -1,88 +1,116 @@
 # File: app/services/speech_to_text.py
 
 import speech_recognition as sr
-import logging
+import numpy as np
+from app.core.logger import get_logger
 from app.core.config import get_settings
 
+# --- Setup ---
 settings = get_settings()
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
-def listen_command():
-    recognizer = sr.Recognizer()
-    device_index = settings.MIC_DEVICE_INDEX
+# This sample rate is optimal for Resemblyzer and many STT engines.
+SAMPLE_RATE = 16000
+
+def _capture_audio(recognizer: sr.Recognizer, source: sr.Microphone, timeout: int | None, phrase_time_limit: int | None) -> sr.AudioData | None:
+    """
+    A helper function to capture audio from the microphone with proper error handling.
+
+    Args:
+        recognizer: The SpeechRecognition recognizer instance.
+        source: The microphone audio source.
+        timeout: How long to wait for a phrase to start.
+        phrase_time_limit: The maximum length of a phrase.
+
+    Returns:
+        An AudioData object if successful, otherwise None.
+    """
+    logger.info("🎤 Adjusting for ambient noise...")
+    recognizer.adjust_for_ambient_noise(source, duration=0.5)
+    logger.info("🎤 Listening...")
 
     try:
-        with sr.Microphone(device_index=device_index) as source:
-            logger.info("🎤 Listening for voice command...")
-            recognizer.adjust_for_ambient_noise(source, duration=1)
-
-            try:
-                audio = recognizer.listen(source, timeout=5, phrase_time_limit=10)
-            except sr.WaitTimeoutError:
-                logger.warning("⏱️ Listening timed out while waiting for phrase.")
-                return None
-
-    except KeyboardInterrupt:
-        logger.info("🛑 Listening interrupted by user.")
-        raise  # So the main loop can gracefully exit
-    except AssertionError as ae:
-        logger.error(f"⚠️ Microphone assertion error: {ae}")
+        return recognizer.listen(source, timeout=timeout, phrase_time_limit=phrase_time_limit)
+    except sr.WaitTimeoutError:
+        logger.warning("⏱️  Listening timed out while waiting for phrase to start.")
         return None
     except Exception as e:
-        logger.exception("❌ Unexpected error while capturing audio.")
+        logger.exception(f"❌ An unexpected error occurred during audio capture: {e}")
+        return None
+
+def listen_for_verification(duration: int = 3) -> np.ndarray | None:
+    """
+    Records audio from the microphone for a fixed duration for voice verification.
+    This function does NOT perform speech-to-text.
+
+    Args:
+        duration (int): The number of seconds to record.
+
+    Returns:
+        A numpy array of the audio waveform, normalized for Resemblyzer.
+        Returns None if no audio could be captured.
+    """
+    recognizer = sr.Recognizer()
+    microphone = sr.Microphone(device_index=settings.MIC_DEVICE_INDEX, sample_rate=SAMPLE_RATE)
+
+    with microphone as source:
+        logger.info(f"Capturing {duration}s of audio for voice verification...")
+        
+        # We use listen's timeout and phrase_time_limit to enforce the duration
+        audio_data = _capture_audio(recognizer, source, timeout=duration, phrase_time_limit=duration)
+
+    if not audio_data:
+        logger.error("Verification failed: No audio was captured.")
         return None
 
     try:
-        logger.info("🧠 Converting speech to text...")
-        text = recognizer.recognize_google(audio)
-        logger.info(f"✅ Recognized: {text}")
-        return text
+        # Convert the raw audio data to a numpy array
+        raw_data = audio_data.get_raw_data(convert_rate=SAMPLE_RATE, convert_width=2)
+        audio_array = np.frombuffer(raw_data, dtype=np.int16)
+
+        # Normalize the audio to floating point values between -1 and 1, as required by Resemblyzer
+        return audio_array.astype(np.float32) / 32768.0
+    except Exception as e:
+        logger.exception(f"❌ Failed to process audio data for verification: {e}")
+        return None
+
+
+def listen_command() -> str | None:
+    """
+    Listens for a voice command and converts it to text using Google's STT service.
+
+    Returns:
+        The recognized text as a string, or None if unsuccessful.
+    """
+    recognizer = sr.Recognizer()
+    microphone = sr.Microphone(device_index=settings.MIC_DEVICE_INDEX, sample_rate=SAMPLE_RATE)
+
+    with microphone as source:
+        audio_data = _capture_audio(recognizer, source, timeout=5, phrase_time_limit=10)
+
+    if not audio_data:
+        return None
+
+    try:
+        logger.info("🧠 Converting speech to text via Google STT...")
+        # For a more robust solution, you could add offline STT (like Vosk) as a fallback here.
+        text = recognizer.recognize_google(audio_data, language=settings.USER_LANGUAGE)
+        logger.info(f"✅ Recognized: '{text}'")
+        return text.lower()
     except sr.UnknownValueError:
-        logger.warning("🤷 Could not understand the audio.")
+        logger.warning("🤷 Google STT could not understand the audio.")
+        return None
     except sr.RequestError as e:
-        logger.error(f"🚨 Google STT error: {e}")
+        logger.error(f"🚨 Could not request results from Google STT service; {e}")
+        return None
+    except Exception as e:
+        logger.exception(f"❌ An unexpected error occurred during speech-to-text conversion: {e}")
+        return None
 
-    return None
-
-
-# # File: app/services/speech_to_text.py
-
-# import speech_recognition as sr
-# import logging
-# #from app.core import settings  # adjust import if needed
-# from app.core.config import get_settings
-# settings = get_settings()
-
-# def listen_command():
-#     recognizer = sr.Recognizer()
-#     device_index = settings.MIC_DEVICE_INDEX
-
-#     try:
-#         with sr.Microphone(device_index=device_index) as source:
-#             logging.info("Listening for voice command...")
-#             recognizer.adjust_for_ambient_noise(source)
-#             #audio = recognizer.listen(source, timeout=5, phrase_time_limit=10)
-#             try:
-#                 audio = recognizer.listen(source, timeout=5, phrase_time_limit=10)
-#             except sr.WaitTimeoutError:
-#                 print("Listening timed out while waiting for phrase to start")
-#                 return None
-            
-#     except AssertionError as ae:
-#         logging.error(f"Mic setup error: {ae}")
-#         return ""
-#     except Exception as e:
-#         logging.error(f"Unexpected error during STT recording: {e}")
-#         return ""
-
-#     try:
-#         logging.info("Converting speech to text...")
-#         text = recognizer.recognize_google(audio)
-#         logging.info(f"Recognized: {text}")
-#         return text
-#     except sr.UnknownValueError:
-#         logging.warning("Could not understand the audio.")
-#     except sr.RequestError as e:
-#         logging.error(f"Speech recognition service error: {e}")
-
-#     return ""
+def confirm_action() -> bool:
+    """Listens for a 'yes' or 'no' confirmation."""
+    logger.info("Awaiting 'yes' or 'no' confirmation...")
+    command = listen_command() # We can reuse listen_command for this
+    if command and "yes" in command.lower():
+        return True
+    return False

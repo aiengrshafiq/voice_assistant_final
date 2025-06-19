@@ -1,36 +1,44 @@
-from app.services.wake_word import listen_for_wake_word
-from app.pipelines.assistant_runner import run_voice_assistant
-#from app.services.scheduler import schedule_daily_briefing
-#from app.utils.db import init_note_db
-import subprocess
 from app.core.logger import get_logger
 from app.core.config import get_settings
-settings = get_settings()
+from app.core.state_machine import VoiceAssistantStateMachine
+import os
 
 logger = get_logger(__name__)
 
-import sounddevice as sd
-def log_audio_devices():
-    logger.info("Available audio input devices:")
-    for i, dev in enumerate(sd.query_devices()):
-        if dev['max_input_channels'] > 0:
-            logger.info(f"Device {i}: {dev['name']} (Inputs: {dev['max_input_channels']})")
+def pre_run_checks():
+    """Performs critical pre-run checks for settings and model files."""
+    settings = get_settings()
+    logger.info("Performing pre-run checks...")
 
+    # Check for OpenAI API Key
+    if not settings.OPENAI_API_KEY or "YOUR_KEY" in settings.OPENAI_API_KEY:
+        logger.critical("FATAL: OPENAI_API_KEY is not configured in your .env file.")
+        exit(1)
 
-def main():
-    logger.info("Starting voice assistant...")
-    #log_audio_devices()
-    #uncomment below if you want automatic daily briefing
-    #schedule_daily_briefing()
-    #init_note_db()
-    # Run voice authentication before launching assistant
+    # Check for voice enrollment if auth is enabled
     if settings.AUTH_ENABLED:
-        if subprocess.call(["python3", "scripts/voice_auth_startup.py"]) != 0:
+        embedding_path = "models/embeddings/ceo_voice_embedding.npy"
+        if not os.path.exists(embedding_path):
+            logger.critical("FATAL: Voice Authentication is enabled, but no voice embedding was found.")
+            logger.critical("Please run the enrollment script first: python3 scripts/enroll_voice.py")
             exit(1)
     else:
         logger.info("Voice authentication is DISABLED via config.")
+    
+    logger.info("✅ Pre-run checks passed.")
 
-    listen_for_wake_word(callback=run_voice_assistant)
+def main():
+    """Initializes and runs the voice assistant state machine."""
+    pre_run_checks()
+    
+    try:
+        logger.info("Starting voice assistant...")
+        assistant = VoiceAssistantStateMachine()
+        assistant.run()
+    except Exception as e:
+        # This will catch initialization errors (like a bad Picovoice key)
+        logger.critical(f"Failed to initialize the Voice Assistant: {e}")
+        exit(1)
 
 if __name__ == "__main__":
     main()

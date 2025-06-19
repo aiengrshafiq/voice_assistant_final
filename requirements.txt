@@ -2,7 +2,8 @@ openai
 pyaudio
 pvporcupine
 SpeechRecognition
-pyttsx3
+# pyttsx3 # Consider upgrading to a cloud TTS for better quality
+google-cloud-texttospeech # Recommended replacement for gTTS/pyttsx3
 python-dotenv
 loguru
 requests
@@ -12,12 +13,11 @@ google-api-python-client
 google-auth
 google-auth-oauthlib
 google-auth-httplib2
-pydantic-settings
 sounddevice
-#flac
-vosk
-gTTS
-ffmpeg-python
+# vosk # Keep for offline STT as a fallback
 resemblyzer
-soundfile 
+soundfile
 numpy
+slack_sdk # For robust Slack integration
+thefuzz # For fuzzy string matching
+python-Levenshtein # Often needed by thefuzz for better performance

@@ -1,54 +1,53 @@
+import openai
 import json
-from openai import OpenAI
 from app.core.logger import get_logger
 from app.core.config import get_settings
-from app.utils.prompt_templates import INTENT_PROMPT_TEMPLATE
-from datetime import datetime
-import re
+from app.utils.prompt_templates import get_nlu_prompt_template
+
 logger = get_logger(__name__)
 settings = get_settings()
+# Ensure your OPENAI_API_KEY is set in your .env file
+openai.api_key = settings.OPENAI_API_KEY
 
-client = OpenAI(api_key=settings.OPENAI_API_KEY)
+def detect_intent_with_context(command: str, history: str) -> dict:
+    """
+    Detects intent from a command using context from conversation history.
 
-VALID_INTENTS = {
-    "turn_on_light", "turn_off_light",
-    "turn_on_plug", "turn_off_plug",
-    "set_thermostat",
-    "set_reminder",
-    "turn_on_speaker", "turn_off_speaker",
-    "get_schedule","get_schedules", "create_event","add_event",
-    "daily_briefing","log_note","read_notes"
-}
+    Args:
+        command: The user's latest voice command as text.
+        history: A formatted string of recent conversation turns.
 
-def detect_intent(user_input: str):
+    Returns:
+        A dictionary containing the structured NLU result (intent, confidence, etc.).
+        Returns a default 'unsupported' dictionary on failure.
+    """
+    prompt = get_nlu_prompt_template().format(history=history, command=command)
+    
     try:
-        today = datetime.today().strftime("%Y-%m-%d")
-        prompt = INTENT_PROMPT_TEMPLATE.format(user_input=user_input, valid_intents=', '.join(VALID_INTENTS), today_date=today)
-
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+        logger.info("Sending request to LLM for NLU processing...")
+        response = openai.chat.completions.create(
+            model="gpt-4-turbo",  # Or "gpt-3.5-turbo" for faster, less expensive results
             messages=[
-                {"role": "system", "content": "You are a helpful smart office assistant."},
+                {"role": "system", "content": "You are a helpful assistant that only responds in JSON."},
                 {"role": "user", "content": prompt}
-            ]
+            ],
+            temperature=0.1,  # Low temperature for more predictable, structured output
+            response_format={"type": "json_object"} # Use JSON mode
         )
+        
+        response_content = response.choices[0].message.content
+        logger.info(f"LLM Response received: {response_content}")
+        
+        nlu_result = json.loads(response_content)
+        # Ensure the original command is part of the result for context stacking
+        if 'user_command' not in nlu_result:
+            nlu_result['user_command'] = command
+            
+        return nlu_result
 
-        result = response.choices[0].message.content.strip()
-        logger.debug(f"[GPT Raw Output] {result}")
-        # Extract valid JSON using regex (fallback)
-        match = re.search(r"\{[\s\S]+\}", result)
-        if match:
-            result = match.group(0)
-
-        parsed = json.loads(result)
-        intent = parsed.get("intent")
-        parameters = parsed.get("parameters", {})
-
-        if intent not in VALID_INTENTS:
-            return "unsupported", {}
-
-        return intent, parameters
-
+    except json.JSONDecodeError:
+        logger.error("Failed to decode JSON response from LLM.")
+        return {"intent": "nlu_error", "confidence": 0.0, "details": "Invalid JSON response", "user_command": command}
     except Exception as e:
-        logger.exception("Intent recognition error.")
-        return None, None
+        logger.exception(f"An error occurred while calling the OpenAI API: {e}")
+        return {"intent": "nlu_error", "confidence": 0.0, "details": str(e), "user_command": command}

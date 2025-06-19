@@ -5,7 +5,7 @@ import os
 from time import sleep
 
 # === CONFIG ===
-MIC_DEVICE_INDEX = 0  # Update based on `pyaudio` results
+MIC_DEVICE_INDEX = 1  # Update based on `pyaudio` results
 SPEAKER_DEVICE = "bluez_output.41_42_C4_D9_12_86.1"  # Replace if needed (e.g., for USB/Bluetooth)
 OUTPUT_FILE = "output_test.wav"
 
