@@ -4,6 +4,7 @@ import speech_recognition as sr
 import numpy as np
 from app.core.logger import get_logger
 from app.core.config import get_settings
+from app.services.feedback_manager import feedback
 
 # --- Setup ---
 settings = get_settings()
@@ -11,6 +12,9 @@ logger = get_logger(__name__)
 
 # This sample rate is optimal for Resemblyzer and many STT engines.
 SAMPLE_RATE = 16000
+
+# --- CONSTANTS ---
+RETRY_ATTEMPTS = 2 # The initial try + 1 retry
 
 def _capture_audio(recognizer: sr.Recognizer, source: sr.Microphone, timeout: int | None, phrase_time_limit: int | None) -> sr.AudioData | None:
     """
@@ -74,38 +78,76 @@ def listen_for_verification(duration: int = 3) -> np.ndarray | None:
         logger.exception(f"❌ Failed to process audio data for verification: {e}")
         return None
 
-
 def listen_command() -> str | None:
     """
-    Listens for a voice command and converts it to text using Google's STT service.
-
-    Returns:
-        The recognized text as a string, or None if unsuccessful.
+    Listens for a voice command with retry logic and converts it to text.
     """
     recognizer = sr.Recognizer()
     microphone = sr.Microphone(device_index=settings.MIC_DEVICE_INDEX, sample_rate=SAMPLE_RATE)
 
-    with microphone as source:
-        audio_data = _capture_audio(recognizer, source, timeout=5, phrase_time_limit=10)
+    for attempt in range(RETRY_ATTEMPTS):
+        with microphone as source:
+            # On retry, give a prompt
+            if attempt > 0:
+                feedback.confirm("I'm sorry, I didn't hear anything. Please say that again.")
+            
+            audio_data = _capture_audio(recognizer, source, timeout=5, phrase_time_limit=10)
 
-    if not audio_data:
-        return None
+        if not audio_data:
+            # If _capture_audio timed out, loop to the next attempt
+            continue
 
-    try:
-        logger.info("🧠 Converting speech to text via Google STT...")
-        # For a more robust solution, you could add offline STT (like Vosk) as a fallback here.
-        text = recognizer.recognize_google(audio_data, language=settings.USER_LANGUAGE)
-        logger.info(f"✅ Recognized: '{text}'")
-        return text.lower()
-    except sr.UnknownValueError:
-        logger.warning("🤷 Google STT could not understand the audio.")
-        return None
-    except sr.RequestError as e:
-        logger.error(f"🚨 Could not request results from Google STT service; {e}")
-        return None
-    except Exception as e:
-        logger.exception(f"❌ An unexpected error occurred during speech-to-text conversion: {e}")
-        return None
+        try:
+            logger.info("🧠 Converting speech to text via Google STT...")
+            text = recognizer.recognize_google(audio_data, language=settings.USER_LANGUAGE)
+            logger.info(f"✅ Recognized: '{text}'")
+            return text.lower() # Return successfully recognized text
+        except sr.UnknownValueError:
+            logger.warning("🤷 Google STT could not understand the audio.")
+            # This counts as a failed attempt, so we loop to retry
+        except sr.RequestError as e:
+            logger.error(f"🚨 Could not request results from Google STT service; {e}")
+            feedback.error("I'm having trouble connecting to the speech service.")
+            return None # A network error is not worth retrying, so we exit
+        except Exception as e:
+            logger.exception(f"❌ An unexpected error occurred during speech-to-text conversion: {e}")
+            return None
+    
+    # If all retry attempts fail
+    logger.warning("All STT retry attempts failed.")
+    return None
+    
+# def listen_command() -> str | None:
+#     """
+#     Listens for a voice command and converts it to text using Google's STT service.
+
+#     Returns:
+#         The recognized text as a string, or None if unsuccessful.
+#     """
+#     recognizer = sr.Recognizer()
+#     microphone = sr.Microphone(device_index=settings.MIC_DEVICE_INDEX, sample_rate=SAMPLE_RATE)
+
+#     with microphone as source:
+#         audio_data = _capture_audio(recognizer, source, timeout=5, phrase_time_limit=10)
+
+#     if not audio_data:
+#         return None
+
+#     try:
+#         logger.info("🧠 Converting speech to text via Google STT...")
+#         # For a more robust solution, you could add offline STT (like Vosk) as a fallback here.
+#         text = recognizer.recognize_google(audio_data, language=settings.USER_LANGUAGE)
+#         logger.info(f"✅ Recognized: '{text}'")
+#         return text.lower()
+#     except sr.UnknownValueError:
+#         logger.warning("🤷 Google STT could not understand the audio.")
+#         return None
+#     except sr.RequestError as e:
+#         logger.error(f"🚨 Could not request results from Google STT service; {e}")
+#         return None
+#     except Exception as e:
+#         logger.exception(f"❌ An unexpected error occurred during speech-to-text conversion: {e}")
+#         return None
 
 def confirm_action() -> bool:
     """Listens for a 'yes' or 'no' confirmation."""

@@ -21,3 +21,5 @@ numpy
 slack_sdk # For robust Slack integration
 thefuzz # For fuzzy string matching
 python-Levenshtein # Often needed by thefuzz for better performance
+
+playsound

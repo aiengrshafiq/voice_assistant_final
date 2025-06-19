@@ -10,6 +10,7 @@ from app.services.intent_recognizer import detect_intent_with_context
 from app.services.speech_to_text import listen_for_verification, listen_command, confirm_action
 from app.services.text_to_speech import speak
 from app.services.action_dispatcher import dispatch_action
+from app.services.feedback_manager import feedback
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -56,7 +57,7 @@ class VoiceAssistantStateMachine:
             except Exception:
                 # ... (this part remains the same)
                 logger.exception("An unhandled error occurred in the state machine loop.")
-                speak("A critical error occurred. Please check the logs. Restarting.")
+                feedback.error("A critical error occurred. Please check the logs. Restarting.")
                 self.state = AssistantState.IDLE
 
     # --- IDLE and WOKE_UP states are unchanged ---
@@ -65,7 +66,8 @@ class VoiceAssistantStateMachine:
         self.state = AssistantState.WOKE_UP
 
     def _handle_woke_up_state(self):
-        speak("Yes?")
+        #speak("Yes?")
+        feedback.acknowledge()
         if settings.AUTH_ENABLED: self.state = AssistantState.AUTHENTICATING
         else: self.state = AssistantState.LISTENING
 
