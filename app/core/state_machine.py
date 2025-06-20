@@ -67,6 +67,7 @@ class VoiceAssistantStateMachine:
 
     def _handle_woke_up_state(self):
         #speak("Yes?")
+        # --- MODIFICATION: Use a chime instead of voice ---
         feedback.acknowledge()
         if settings.AUTH_ENABLED: self.state = AssistantState.AUTHENTICATING
         else: self.state = AssistantState.LISTENING
@@ -79,17 +80,20 @@ class VoiceAssistantStateMachine:
             self.state = AssistantState.IDLE
             return
         if session_manager.verify_voice(audio_data):
-            speak("Identity confirmed.")
+            #speak("Identity confirmed.")
+            # --- MODIFICATION: Use feedback.success ---
+            feedback.success("Identity confirmed.")
             self.state = AssistantState.LISTENING
         else:
-            speak("I'm sorry, I don't recognize your voice.")
+            feedback.error("I'm sorry, I don't recognize your voice.")
             self.state = AssistantState.IDLE
 
     # --- LISTENING state is now simpler ---
     def _handle_listening_state(self):
         """Listens for a command and transitions to PROCESSING."""
         logger.info("State: LISTENING. Ready for user command.")
-        speak("How can I help you?")
+        # --- MODIFICATION: Use feedback.confirm ---
+        feedback.confirm("How can I help you?")
         command = listen_command()
 
         if command:
@@ -97,7 +101,7 @@ class VoiceAssistantStateMachine:
             self.state = AssistantState.PROCESSING
         else:
             logger.warning("No command heard. Returning to IDLE state.")
-            speak("I didn't catch that. Going back to sleep.")
+            #speak("I didn't catch that. Going back to sleep.")
             self.state = AssistantState.IDLE
     
     # --- NEW: PROCESSING state with confidence logic ---
@@ -124,9 +128,9 @@ class VoiceAssistantStateMachine:
         else:
             logger.warning(f"Low confidence ({confidence:.2f}) or unsupported intent. Re-prompting.")
             if intent == 'unsupported':
-                speak("I'm not sure how to help with that. Please try rephrasing your request.")
+                feedback.confirm("I'm not sure how to help with that. Please try rephrasing your request.")
             else:
-                speak("I'm not quite sure what you mean. Could you say that again?")
+                feedback.confirm("I'm not quite sure what you mean. Could you say that again?")
             self.state = AssistantState.IDLE
 
     # --- NEW: AWAITING_CONFIRMATION state ---
@@ -135,30 +139,17 @@ class VoiceAssistantStateMachine:
         logger.info("State: AWAITING_CONFIRMATION.")
         intent_phrase = self.nlu_result.get('intent', 'the action').replace('_', ' ')
         
-        speak(f"Just to be sure, you want me to {intent_phrase}. Is that correct?")
+        feedback.confirm(f"Just to be sure, you want me to {intent_phrase}. Is that correct?")
         
         if confirm_action(): # This should be a function in STT that listens for "yes" or "no"
             logger.info("User confirmed action.")
             self.state = AssistantState.EXECUTING
         else:
             logger.info("User denied action.")
-            speak("My mistake. Cancelling the action.")
+            feedback.success("My mistake. Cancelling the action.")
             self.state = AssistantState.IDLE
 
-    # --- NEW: EXECUTING state ---
-    # def _handle_executing_state(self):
-    #     """Placeholder for executing the final action."""
-    #     logger.info(f"State: EXECUTING. Action: {self.nlu_result}")
-        
-    #     # In Phase 3, this will call the Action Dispatcher.
-    #     # For now, we just acknowledge and finish the loop.
-    #     intent_phrase = self.nlu_result.get('intent', 'task').replace('_', ' ')
-    #     speak(f"Okay, proceeding with {intent_phrase}.")
-
-    #     # Reset for the next loop
-    #     self.current_command = None
-    #     self.nlu_result = None
-    #     self.state = AssistantState.IDLE
+  
     
     def _handle_executing_state(self):
         """Calls the action dispatcher and speaks the result."""
@@ -168,7 +159,13 @@ class VoiceAssistantStateMachine:
         result_message = dispatch_action(self.nlu_result)
         
         # Speak the result returned by the service
-        speak(result_message)
+        #speak(result_message)
+        if "Okay" in result_message or "Done" in result_message:
+            feedback.acknowledge()
+        else:
+            feedback.success(result_message)
+        logger.info(f"Action executed: {result_message}")
+        
 
         # Reset for the next loop
         self.current_command = None
