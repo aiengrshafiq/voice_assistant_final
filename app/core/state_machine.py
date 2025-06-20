@@ -74,7 +74,11 @@ class VoiceAssistantStateMachine:
 
     # --- AUTHENTICATING state is unchanged ---
     def _handle_authenticating_state(self):
-        # ... (this handler is the same as in Phase 1)
+        """Records a short audio clip and verifies the user's voice."""
+        logger.info("State: AUTHENTICATING. Awaiting voice sample for verification.")
+
+        # --- ADD THIS LINE ---
+        feedback.confirm("Please say a short phrase for voice verification.")
         audio_data = listen_for_verification(duration=3) 
         if audio_data is None:
             self.state = AssistantState.IDLE
