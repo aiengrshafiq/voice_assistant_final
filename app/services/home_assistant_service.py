@@ -52,5 +52,38 @@ class HomeAssistantService:
         else:
             return "Sorry, I had trouble activating that scene in Home Assistant."
 
+    # --- NEW FUNCTION FOR LIGHTS ---
+    def control_entity_state(self, entity_id: str, state: str) -> str:
+        """
+        Controls any entity that supports turn_on/turn_off services (lights, switches, fans, etc.).
+        It intelligently determines the correct service domain from the entity_id.
+        """
+        if not entity_id or '.' not in entity_id:
+            return "I was given an invalid device ID to control."
+
+        # Intelligently determine the domain (e.g., 'light', 'switch') from the entity_id
+        domain = entity_id.split('.')[0]
+        
+        # Check if the domain is valid for this type of action
+        if domain not in ['light', 'switch', 'fan']:
+            return f"I don't know how to turn a '{domain}' device on or off."
+
+        service = "turn_on" if state == "on" else "turn_off"
+        service_data = {"entity_id": entity_id}
+        
+        if self._call_service(domain, service, service_data):
+            return f"Okay, the device is now {state}."
+        else:
+            return "I had trouble controlling that device."
+
+    # --- NEW FUNCTION FOR CLIMATE ---
+    def set_thermostat(self, entity_id: str, temperature: int) -> str:
+        """Sets the temperature for a climate entity."""
+        service_data = {"entity_id": entity_id, "temperature": temperature}
+        if self._call_service("climate", "set_temperature", service_data):
+            return f"Okay, I've set the temperature to {temperature} degrees."
+        else:
+            return "I had trouble setting the thermostat."
+
 # Create a single instance of the service
 ha_service = HomeAssistantService()

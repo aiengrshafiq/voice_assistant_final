@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     USER_LANGUAGE: str = "en-US"
     WAKE_WORD: str = "jarvis"
     SLACK_BOT_TOKEN: str = "YOUR_SLACK_TOKEN_HERE" # Placeholder
-    VOICE_AUTH_THRESHOLD: float = 0.85
+    VOICE_AUTH_THRESHOLD: float = 0.65
     
 
     class Config:

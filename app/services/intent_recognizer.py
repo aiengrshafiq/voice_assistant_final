@@ -1,4 +1,5 @@
 import openai
+import datetime
 import json
 from app.core.logger import get_logger
 from app.core.config import get_settings
@@ -21,8 +22,25 @@ def detect_intent_with_context(command: str, history: str) -> dict:
         A dictionary containing the structured NLU result (intent, confidence, etc.).
         Returns a default 'unsupported' dictionary on failure.
     """
-    prompt = get_nlu_prompt_template().format(history=history, command=command)
     
+    # --- All dynamic data is now prepared here ---
+    prompt_template = get_nlu_prompt_template()
+
+    # Prepare dynamic values for the template
+    now = datetime.datetime.now().strftime("%A, %Y-%m-%d %H:%M:%S")
+    tomorrow_date = (datetime.date.today() + datetime.timedelta(days=1))
+    example_start_time = tomorrow_date.strftime("%Y-%m-%d") + "T16:00:00"
+    example_end_time = (datetime.datetime.strptime(example_start_time, "%Y-%m-%dT%H:%M:%S") + datetime.timedelta(minutes=90)).strftime("%Y-%m-%dT%H:%M:%S")
+
+    # Format the template with all dynamic parts in one go
+    prompt = prompt_template.format(
+        current_time=now,
+        example_start_time=example_start_time,
+        example_end_time=example_end_time,
+        history=history,
+        command=command
+    )
+
     try:
         logger.info("Sending request to LLM for NLU processing...")
         response = openai.chat.completions.create(
