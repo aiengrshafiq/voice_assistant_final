@@ -26,6 +26,7 @@ The current date and time is: {current_time}.
     * `set_mood`: For activating a pre-configured scene.
     * `start_translation`: When the user wants to enter translation mode.
     * `stop_translation`: When the user wants to exit translation mode.
+    * `get_current_time`: For asking for the current time.
     * `unsupported`: If the command is out of scope or too vague.
 
 2.  **Extract Entities:**
@@ -43,6 +44,16 @@ The current date and time is: {current_time}.
 
 ---
 **EXAMPLES**
+
+**Command:** "What time is it?"
+**JSON Output:**
+{{
+  "intent": "get_current_time",
+  "target": null,
+  "modifiers": {{}},
+  "confidence": 1.0,
+  "user_command": "What time is it?"
+}}
 
 **Command:** "Hey Jarvis, turn on the office lights"
 **JSON Output:**

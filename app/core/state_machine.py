@@ -83,17 +83,25 @@ class VoiceAssistantStateMachine:
         # --- ADD THIS LINE ---
         feedback.confirm("Please say a short phrase for voice verification.")
         audio_data = listen_for_verification(duration=3) 
+
         if audio_data is None:
-            self.state = AssistantState.IDLE
+            logger.warning("No audio captured for verification. Entering Guest Mode.")
+            session_manager.access_level = "guest"
+            feedback.error("I couldn't hear you. Entering guest mode.")
+            self.state = AssistantState.LISTENING
             return
+
         if session_manager.verify_voice(audio_data):
             #speak("Identity confirmed.")
             # --- MODIFICATION: Use feedback.success ---
-            feedback.success("Identity confirmed.")
+            session_manager.access_level = "private"
+            feedback.success("Identity confirmed. Welcome, sir.")
             self.state = AssistantState.LISTENING
+            
         else:
-            feedback.error("I'm sorry, I don't recognize your voice.")
-            self.state = AssistantState.IDLE
+            session_manager.access_level = "guest"
+            feedback.error("I don't recognize your voice. Entering guest mode with limited access.")
+            self.state = AssistantState.LISTENING
 
     # --- LISTENING state is now simpler ---
     def _handle_listening_state(self):
@@ -169,7 +177,11 @@ class VoiceAssistantStateMachine:
         logger.info(f"State: EXECUTING. Passing action to dispatcher: {self.nlu_result}")
         
         # Call the dispatcher with the NLU result
-        result_message = dispatch_action(self.nlu_result)
+        
+        result_message = dispatch_action(
+            nlu_result=self.nlu_result,
+            access_level=session_manager.access_level 
+        )
         
         # Speak the result returned by the service
         #speak(result_message)
@@ -184,6 +196,7 @@ class VoiceAssistantStateMachine:
         self.current_command = None
         self.nlu_result = None
         self.state = AssistantState.IDLE
+        
 
     # --- NEW METHOD: The translator mode loop ---
     def _handle_translating_state(self):
