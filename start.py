@@ -41,4 +41,5 @@ def main():
         exit(1)
 
 if __name__ == "__main__":
+    #Just confirming that git has my latest changes before translator module
     main()
