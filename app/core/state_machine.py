@@ -8,9 +8,10 @@ from app.services.wake_word import WakeWordEngine
 # --- Import the new NLU service ---
 from app.services.intent_recognizer import detect_intent_with_context
 from app.services.speech_to_text import listen_for_verification, listen_command, confirm_action
-from app.services.text_to_speech import speak
+from app.services.text_to_speech import speak, speak_translation
 from app.services.action_dispatcher import dispatch_action
 from app.services.feedback_manager import feedback
+from app.services.translator_service import translator_service
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -24,6 +25,7 @@ class AssistantState(Enum):
     PROCESSING = auto()
     AWAITING_CONFIRMATION = auto()
     EXECUTING = auto()
+    TRANSLATING = auto()
 
 class VoiceAssistantStateMachine:
     def __init__(self):
@@ -45,6 +47,7 @@ class VoiceAssistantStateMachine:
                 elif self.state == AssistantState.PROCESSING: self._handle_processing_state()
                 elif self.state == AssistantState.AWAITING_CONFIRMATION: self._handle_awaiting_confirmation_state()
                 elif self.state == AssistantState.EXECUTING: self._handle_executing_state()
+                elif self.state == AssistantState.TRANSLATING: self._handle_translating_state()
                 
                 time.sleep(0.1)
 
@@ -118,8 +121,14 @@ class VoiceAssistantStateMachine:
         confidence = self.nlu_result.get('confidence', 0.0)
         intent = self.nlu_result.get('intent', 'unknown')
 
-        # Add to context only if intent is valid and not an error
-        if intent not in ['unknown', 'unsupported', 'nlu_error']:
+        # --- NEW: Handle state-changing meta-commands before the dispatcher ---
+        if intent == 'start_translation':
+            logger.info("Transitioning to TRANSLATING state.")
+            self.state = AssistantState.TRANSLATING
+            return # Exit early, no need to dispatch
+
+        # Add to context only if intent is valid and not a meta-command
+        if intent not in ['unknown', 'unsupported', 'nlu_error', 'start_translation']:
             session_manager.add_to_context(self.nlu_result)
 
         # Confidence-based routing
@@ -175,3 +184,45 @@ class VoiceAssistantStateMachine:
         self.current_command = None
         self.nlu_result = None
         self.state = AssistantState.IDLE
+
+    # --- NEW METHOD: The translator mode loop ---
+    def _handle_translating_state(self):
+        """Handles the continuous translation mode."""
+        feedback.success("Translation mode activated. I will now translate between English and Arabic.")
+        
+        while True:
+            # 1. Listen for any speech
+            text_to_translate = listen_command(timeout=30) # Use a longer timeout
+
+            if not text_to_translate:
+                logger.info("No speech detected in translation mode.")
+                continue
+
+            # 2. Check for the exit command
+            if "stop translation" in text_to_translate.lower():
+                feedback.success("Exiting translation mode.")
+                self.state = AssistantState.IDLE
+                break # Exit the translation loop
+
+            # 3. Detect language
+            source_lang = translator_service.detect_language(text_to_translate)
+            if not source_lang:
+                feedback.error("Sorry, I couldn't determine the language.")
+                continue
+
+            # 4. Determine target language and translate
+            if 'en' in source_lang:
+                target_lang = 'ar'
+            elif 'ar' in source_lang:
+                target_lang = 'en'
+            else:
+                feedback.confirm("I can only translate between English and Arabic.")
+                continue
+            
+            translated_text = translator_service.translate(text_to_translate, target_lang)
+
+            # 5. Speak the translation in the target language's voice
+            if translated_text:
+                speak_translation(translated_text, lang=target_lang)
+            else:
+                feedback.error("Sorry, I was unable to get a translation.")

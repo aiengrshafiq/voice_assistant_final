@@ -24,6 +24,8 @@ The current date and time is: {current_time}.
     * `summon_person`: To call someone via Slack.
     * `play_music`, `pause_music`, `resume_music`, `stop_music`: For media control.
     * `set_mood`: For activating a pre-configured scene.
+    * `start_translation`: When the user wants to enter translation mode.
+    * `stop_translation`: When the user wants to exit translation mode.
     * `unsupported`: If the command is out of scope or too vague.
 
 2.  **Extract Entities:**

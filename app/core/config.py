@@ -31,6 +31,20 @@ class Settings(BaseSettings):
     WAKE_WORD: str = "jarvis"
     SLACK_BOT_TOKEN: str = "YOUR_SLACK_TOKEN_HERE" # Placeholder
     VOICE_AUTH_THRESHOLD: float = 0.65
+
+    # --- AZURE TRANSLATOR ---
+    AZURE_TRANSLATOR_KEY: str ="1Wry3RrRuk6eKp62trVIQ44OnoRukTUNs38JasEETHMibPuJFtKPJQQJ99BEACYeBjFXJ3w3AAAbACOGoa9p"
+    AZURE_REGION: str ="eastus" # e.g., eastus
+    TRANSLATE_ENDPOINT: str ="https://api.cognitive.microsofttranslator.com"
+
+    # --- TEXT-TO-SPEECH PROVIDER ---
+    TTS_PROVIDER: str ="elevenlabs" # Use 'elevenlabs' or 'gtts'
+    ELEVENLABS_API_KEY: str ="sk_9e2b620f79f0424a1cb90d016e90f6d18747b2885d95c03b"
+    # Find Voice IDs in your ElevenLabs Voice Lab
+    ELEVENLABS_VOICE_ID_EN: str ="SV61h9yhBg4i91KIBwdz" # e.g., 21m00Tcm4TlvDq8ikWAM
+    ELEVENLABS_VOICE_ID_AR: str ="jAAHNNqlbAX9iWjJPEtE"
+    # Name of your audio output device for mpg123, find with 'aplay -L'
+    #SPEAKER_DEVICE="default"
     
 
     class Config:
