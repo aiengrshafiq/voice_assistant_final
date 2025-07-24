@@ -3,6 +3,7 @@ from app.core.config import get_settings
 from app.core.state_machine import VoiceAssistantStateMachine
 import os
 
+
 logger = get_logger(__name__)
 
 def pre_run_checks():
