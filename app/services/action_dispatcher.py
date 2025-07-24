@@ -11,14 +11,16 @@ logger = get_logger(__name__)
 # This ACTION_MAP is the heart of the dispatcher.
 # Each action is now a dictionary with a handler and a required permission level.
 ACTION_MAP = {
+    #--- private or public
     # --- Private Actions (Requires Verified CEO Voice) ---
+    #For testing purpose, i will make them public
     "summon_person": {
         "handler": lambda result: slack_service.summon_person(result.get('target')),
-        "permission": "private"
+        "permission": "public"
     },
     "get_calendar_events": {
         "handler": lambda result: calendar_service.get_upcoming_events(),
-        "permission": "private"
+        "permission": "public"
     },
     "schedule_meeting": {
         "handler": lambda result: calendar_service.create_event(
@@ -27,7 +29,7 @@ ACTION_MAP = {
             end_time=result.get('modifiers', {}).get('end_time'),
             description=result.get('modifiers', {}).get('description')
         ),
-        "permission": "private"
+        "permission": "public"
     },
 
     # --- Public Actions (Available in Guest Mode) ---
@@ -100,6 +102,13 @@ def dispatch_action(nlu_result: dict, access_level: str) -> str:
         return "I'm sorry, but that is a private command that only the CEO can authorize."
 
 
+    # --- NEW: Check the sacred audio lock before handling music intents ---
+    # music_intents = ["play_playlist", "play_song", "resume_music"]
+    # if intent in music_intents:
+    #     lock_state = ha_service.get_entity_state("input_boolean.sacred_audio_playing")
+    #     if lock_state == "on":
+    #         logger.warning("Music command blocked by sacred audio lock.")
+    #         return "I'm sorry, I cannot play music at this time."
 
     # --- NEW: Centralized check for device-related intents ---
     device_intents = ["control_device_state", "set_thermostat"]

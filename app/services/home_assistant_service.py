@@ -85,5 +85,17 @@ class HomeAssistantService:
         else:
             return "I had trouble setting the thermostat."
 
+    
+    def get_entity_state(self, entity_id: str) -> str | None:
+        """Gets the current state of any entity from Home Assistant."""
+        api_url = f"{self.base_url}/api/states/{entity_id}"
+        try:
+            response = requests.get(api_url, headers=self.headers, timeout=5)
+            response.raise_for_status()
+            return response.json().get("state")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to get state for {entity_id}: {e}")
+            return None
+
 # Create a single instance of the service
 ha_service = HomeAssistantService()
