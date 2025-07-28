@@ -1,3 +1,4 @@
+import asyncio
 from app.core.logger import get_logger
 from app.services.slack_service import slack_service
 from app.services.home_assistant_service import ha_service
@@ -8,128 +9,111 @@ from app.utils.entity_map import get_entity_id
 
 logger = get_logger(__name__)
 
-# This ACTION_MAP is the heart of the dispatcher.
-# Each action is now a dictionary with a handler and a required permission level.
+# --- V3 ACTION_MAP ---
+# This map is updated for the new NLU structure.
+# We now use `**result.get('entities', {})` to pass the entire entities dictionary
+# as keyword arguments to the handler functions. This is cleaner and more scalable.
 ACTION_MAP = {
-    #--- private or public
     # --- Private Actions (Requires Verified CEO Voice) ---
-    #For testing purpose, i will make them public
+    # For testing, permissions are public. Revert to "private" for production.
     "summon_person": {
-        "handler": lambda result: slack_service.summon_person(result.get('target')),
+        "handler": lambda res: slack_service.summon_person(**res.get('entities', {})),
         "permission": "public"
     },
     "get_calendar_events": {
-        "handler": lambda result: calendar_service.get_upcoming_events(),
+        "handler": lambda res: calendar_service.get_upcoming_events(),
         "permission": "public"
     },
     "schedule_meeting": {
-        "handler": lambda result: calendar_service.create_event(
-            summary=result.get('target'),
-            start_time=result.get('modifiers', {}).get('start_time'),
-            end_time=result.get('modifiers', {}).get('end_time'),
-            description=result.get('modifiers', {}).get('description')
-        ),
+        "handler": lambda res: calendar_service.create_event(**res.get('entities', {})),
         "permission": "public"
     },
 
     # --- Public Actions (Available in Guest Mode) ---
-    "get_current_time":     {"handler": lambda res: time_service.get_current_time(), "permission": "public"},
-    "set_mood": {
-        "handler": lambda result: ha_service.trigger_scene_by_name(result.get('target')),
+    "get_current_time": {
+        "handler": lambda res: time_service.get_current_time(),
         "permission": "public"
     },
-    "control_device_state": {
-        "handler": lambda result: ha_service.control_entity_state(
-            entity_id=get_entity_id(result.get('target')),
-            state=result.get('modifiers', {}).get('state')
-        ),
+    "set_mood": {
+        "handler": lambda res: ha_service.trigger_scene_by_name(**res.get('entities', {})),
+        "permission": "public"
+    },
+    "control_device": {
+        "handler": lambda res: ha_service.control_entity_state(**res.get('entities', {})),
         "permission": "public"
     },
     "set_thermostat": {
-        "handler": lambda result: ha_service.set_thermostat(
-            entity_id=get_entity_id(result.get('target')),
-            temperature=result.get('modifiers', {}).get('temperature')
-        ),
+        "handler": lambda res: ha_service.set_thermostat(**res.get('entities', {})),
         "permission": "public"
     },
-    "play_playlist": {
-        "handler": lambda result: music_service.play_playlist(result.get('target')),
-        "permission": "public"
-    },
-    "play_song": {
-        "handler": lambda result: music_service.play_song(result.get('target')),
+    "play_music": {
+        "handler": lambda res: music_service.play_song(**res.get('entities', {})),
         "permission": "public"
     },
     "stop_music": {
-        "handler": lambda result: music_service.stop_music(),
+        "handler": lambda res: music_service.stop_music(),
         "permission": "public"
     },
     "pause_music": {
-        "handler": lambda result: music_service.pause(),
+        "handler": lambda res: music_service.pause(),
         "permission": "public"
     },
     "resume_music": {
-        "handler": lambda result: music_service.resume(),
-        "permission": "public"
-    },
-    "get_current_time": {
-        "handler": lambda result: time_service.get_current_time(),
+        "handler": lambda res: music_service.resume(),
         "permission": "public"
     },
 }
 
 
-def dispatch_action(nlu_result: dict, access_level: str) -> str:
+async def dispatch_action(nlu_result: dict, access_level: str) -> dict:
     """
-    Looks at the NLU result, validates it, and calls the appropriate service function.
+    V3: Asynchronously dispatches actions based on NLU results.
+    It now expects and returns a dictionary for richer communication with the state machine.
     """
     intent = nlu_result.get('intent')
-    target = nlu_result.get('target')
-    logger.info(f"Dispatching action for intent: '{intent}' with target: '{target}'")
+    entities = nlu_result.get('entities', {})
+    logger.info(f"Dispatching action for intent: '{intent}' with entities: {entities}")
 
-    if not intent:
-        return "I'm not sure what you want me to do. The intent is missing."
+    # Handle cases where NLU fails or intent is unsupported
+    if not intent or intent in ['unsupported', 'user_frustrated']:
+        message = nlu_result.get('response_suggestion', "I'm sorry, I can't help with that.")
+        return {"status": "failed", "message": message}
 
     action_details = ACTION_MAP.get(intent)
     if not action_details:
-        logger.warning(f"No action defined for the intent: '{intent}'")
-        return f"I understand you want to '{intent.replace('_', ' ')}', but I don't know how to do that yet."
+        logger.warning(f"No action defined for intent: '{intent}'")
+        return {"status": "failed", "message": f"I understand the intent is '{intent}', but I don't have a way to handle it."}
 
-    # --- THE SECURITY CHECK ---
+    # --- Security Check ---
     required_permission = action_details["permission"]
     if required_permission == "private" and access_level != "private":
         logger.warning(f"Permission denied for user with level '{access_level}' to access private intent '{intent}'.")
-        return "I'm sorry, but that is a private command that only the CEO can authorize."
+        return {"status": "unauthorized", "message": "I'm sorry, that is a private command that only the CEO can authorize."}
 
-
-    # --- NEW: Check the sacred audio lock before handling music intents ---
-    # music_intents = ["play_playlist", "play_song", "resume_music"]
-    # if intent in music_intents:
-    #     lock_state = ha_service.get_entity_state("input_boolean.sacred_audio_playing")
-    #     if lock_state == "on":
-    #         logger.warning("Music command blocked by sacred audio lock.")
-    #         return "I'm sorry, I cannot play music at this time."
-
-    # --- NEW: Centralized check for device-related intents ---
-    device_intents = ["control_device_state", "set_thermostat"]
-    if intent in device_intents:
-        if not target:
-            return f"You need to specify which device you want to control."
-        
-        entity_id = get_entity_id(target)
-        if not entity_id:
-            logger.warning(f"No entity_id found in entity_map.py for target: '{target}'")
-            return f"I don't know about a device called '{target}'. Please check the configuration."
-
-    # --- The rest of the function proceeds as normal ---
+    # --- Execute Action Handler ---
     action_handler = action_details["handler"]
+    if not action_handler:
+        return {"status": "failed", "message": "Action handler not found."}
 
-    if action_handler:
-        try:
-            return action_handler(nlu_result)
-        except Exception as e:
-            logger.exception(f"An error occurred while executing action for intent '{intent}': {e}")
-            return "I ran into an unexpected error while trying to perform that action."
-    else:
-        logger.warning(f"No action defined for the intent: '{intent}'")
-        return f"I understand you want to '{intent.replace('_', ' ')}', but I don't know how to do that yet."
+    try:
+        # Run the synchronous handler in a separate thread to avoid blocking the asyncio event loop
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            None,  # Use the default thread pool executor
+            lambda: action_handler(nlu_result)
+        )
+
+        # Standardize the response format. If a service returns a simple string, wrap it.
+        if isinstance(result, str):
+            return {"status": "success", "message": result}
+        
+        # If the service returns a dict (the new standard), return it directly
+        if isinstance(result, dict):
+            return result
+
+        # Fallback for unexpected return types
+        return {"status": "failed", "message": "The action returned an unexpected result type."}
+
+    except Exception as e:
+        logger.exception(f"An error occurred while executing action for intent '{intent}': {e}")
+        return {"status": "error", "message": "I ran into an unexpected error while trying to perform that action."}

@@ -1,3 +1,4 @@
+#app/services/wake_word.py
 import os
 import struct
 import pvporcupine

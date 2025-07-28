@@ -1,3 +1,4 @@
+import asyncio
 import openai
 import datetime
 import json
@@ -7,65 +8,57 @@ from app.utils.prompt_templates import get_nlu_prompt_template
 
 logger = get_logger(__name__)
 settings = get_settings()
-# Ensure your OPENAI_API_KEY is set in your .env file
 openai.api_key = settings.OPENAI_API_KEY
 
-def detect_intent_with_context(command: str, history: str) -> dict:
+# V3: The function is now asynchronous to work with the new state machine
+async def detect_intent_with_context(command: str, history: list) -> dict:
     """
-    Detects intent from a command using context from conversation history.
+    V3: Asynchronously detects intent using the conversational NLU prompt.
 
     Args:
         command: The user's latest voice command as text.
-        history: A formatted string of recent conversation turns.
+        history: A list of recent conversation turn dictionaries.
 
     Returns:
-        A dictionary containing the structured NLU result (intent, confidence, etc.).
-        Returns a default 'unsupported' dictionary on failure.
+        A dictionary containing the structured NLU result.
     """
     
-    # --- All dynamic data is now prepared here ---
     prompt_template = get_nlu_prompt_template()
 
-    # Prepare dynamic values for the template
+    # V3: Simplified formatting for the new prompt
     now = datetime.datetime.now().strftime("%A, %Y-%m-%d %H:%M:%S")
-    tomorrow_date = (datetime.date.today() + datetime.timedelta(days=1))
-    example_start_time = tomorrow_date.strftime("%Y-%m-%d") + "T16:00:00"
-    example_end_time = (datetime.datetime.strptime(example_start_time, "%Y-%m-%dT%H:%M:%S") + datetime.timedelta(minutes=90)).strftime("%Y-%m-%dT%H:%M:%S")
+    formatted_history = json.dumps(history, indent=2)
 
-    # Format the template with all dynamic parts in one go
     prompt = prompt_template.format(
         current_time=now,
-        example_start_time=example_start_time,
-        example_end_time=example_end_time,
-        history=history,
+        history=formatted_history,
         command=command
     )
 
     try:
         logger.info("Sending request to LLM for NLU processing...")
-        response = openai.chat.completions.create(
-            model="gpt-4-turbo",  # Or "gpt-3.5-turbo" for faster, less expensive results
+        response = await openai.chat.completions.create(
+            # gpt-4o is faster and cheaper than turbo, ideal for this use case
+            model="gpt-4o", 
             messages=[
-                {"role": "system", "content": "You are a helpful assistant that only responds in JSON."},
+                {"role": "system", "content": "You are a helpful assistant that only responds in a single, well-formed JSON object."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.1,  # Low temperature for more predictable, structured output
-            response_format={"type": "json_object"} # Use JSON mode
+            temperature=0.1,
+            response_format={"type": "json_object"} # Force JSON mode
         )
         
         response_content = response.choices[0].message.content
         logger.info(f"LLM Response received: {response_content}")
         
         nlu_result = json.loads(response_content)
-        # Ensure the original command is part of the result for context stacking
-        if 'user_command' not in nlu_result:
-            nlu_result['user_command'] = command
-            
+        nlu_result['user_command'] = command # Ensure command is always in the result
+        
         return nlu_result
 
     except json.JSONDecodeError:
         logger.error("Failed to decode JSON response from LLM.")
-        return {"intent": "nlu_error", "confidence": 0.0, "details": "Invalid JSON response", "user_command": command}
+        return {"intent": "nlu_error", "message": "Invalid JSON response", "user_command": command}
     except Exception as e:
         logger.exception(f"An error occurred while calling the OpenAI API: {e}")
-        return {"intent": "nlu_error", "confidence": 0.0, "details": str(e), "user_command": command}
+        return {"intent": "nlu_error", "message": str(e), "user_command": command}

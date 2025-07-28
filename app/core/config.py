@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     ELEVENLABS_VOICE_ID_AR: str ="jAAHNNqlbAX9iWjJPEtE"
     # Name of your audio output device for mpg123, find with 'aplay -L'
     #SPEAKER_DEVICE="default"
+    DEEPGRAM_API_KEY: str ="58c440889de2a574a10058a3fe66783fe87cd855"
     
 
     class Config:

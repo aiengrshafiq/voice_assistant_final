@@ -1,3 +1,4 @@
+#app/services/translator_service.py
 import requests
 from app.core.logger import get_logger
 from app.core.config import get_settings

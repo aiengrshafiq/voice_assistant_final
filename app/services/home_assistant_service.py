@@ -1,22 +1,14 @@
+# app/services/home_assistant_service.py
 import requests
 from app.core.logger import get_logger
 from app.core.config import get_settings
+from app.utils.entity_map import get_entity_id # We will still use this utility
 
 logger = get_logger(__name__)
 settings = get_settings()
 
-# --- Mapping from abstract concepts to specific Home Assistant entity IDs ---
-# This is where you configure the assistant to know your specific setup.
-SCENE_MAP = {
-    "tired": "scene.office_tired_mode",
-    "focus": "scene.office_focus_mode",
-    "energized": "scene.office_energized_mode",
-    "end of day": "scene.office_shutdown"
-}
-# ---
-
 class HomeAssistantService:
-    """Service for interacting with the Home Assistant API."""
+    """V3: Unified service for all Home Assistant API interactions."""
 
     def __init__(self):
         self.base_url = settings.HOME_ASSISTANT_URL
@@ -25,77 +17,59 @@ class HomeAssistantService:
             "Content-Type": "application/json",
         }
         if "YOUR_HA_TOKEN" in settings.HOME_ASSISTANT_TOKEN:
-            logger.warning("Home Assistant token seems to be a placeholder. The service may not work.")
+            logger.warning("Home Assistant token is a placeholder. Service may not work.")
 
     def _call_service(self, domain: str, service: str, service_data: dict) -> bool:
         """Helper to make a generic service call to Home Assistant."""
         api_url = f"{self.base_url}/api/services/{domain}/{service}"
         try:
             response = requests.post(api_url, headers=self.headers, json=service_data, timeout=5)
-            response.raise_for_status()  # Raises an exception for 4xx/5xx errors
+            response.raise_for_status()
             logger.info(f"Successfully called HA service '{domain}.{service}' with data: {service_data}")
             return True
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to call Home Assistant API: {e}")
             return False
 
-    def trigger_scene_by_name(self, scene_name: str) -> str:
-        """Triggers a scene based on a mapped name (e.g., 'focus')."""
-        scene_entity_id = SCENE_MAP.get(scene_name.lower())
-
+    def trigger_scene_by_name(self, scene_name: str, **kwargs) -> dict:
+        """Triggers a scene and returns a V3-compliant dictionary."""
+        # This uses the entity map now for consistency
+        scene_entity_id = get_entity_id(scene_name)
         if not scene_entity_id:
-            logger.warning(f"No scene found in SCENE_MAP for the name: '{scene_name}'")
-            return f"I don't have a scene called '{scene_name}' configured."
+            return {"status": "failed", "message": f"I don't have a scene called '{scene_name}' configured."}
         
         if self._call_service("scene", "turn_on", {"entity_id": scene_entity_id}):
-            return f"Okay, I've activated the {scene_name} scene."
+            return {"status": "success", "message": f"Okay, I've activated the {scene_name} scene."}
         else:
-            return "Sorry, I had trouble activating that scene in Home Assistant."
+            return {"status": "error", "message": "Sorry, I had trouble activating that scene."}
 
-    # --- NEW FUNCTION FOR LIGHTS ---
-    def control_entity_state(self, entity_id: str, state: str) -> str:
-        """
-        Controls any entity that supports turn_on/turn_off services (lights, switches, fans, etc.).
-        It intelligently determines the correct service domain from the entity_id.
-        """
-        if not entity_id or '.' not in entity_id:
-            return "I was given an invalid device ID to control."
+    def control_entity_state(self, device_name: str, state: str, **kwargs) -> dict:
+        """Controls any entity that supports turn_on/turn_off services."""
+        entity_id = get_entity_id(device_name)
+        if not entity_id:
+            return {"status": "failed", "message": f"I don't know about a device called '{device_name}'."}
 
-        # Intelligently determine the domain (e.g., 'light', 'switch') from the entity_id
         domain = entity_id.split('.')[0]
-        
-        # Check if the domain is valid for this type of action
-        if domain not in ['light', 'switch', 'fan']:
-            return f"I don't know how to turn a '{domain}' device on or off."
+        if domain not in ['light', 'switch', 'fan', 'input_boolean']:
+            return {"status": "failed", "message": f"I don't know how to turn a '{domain}' device on or off."}
 
         service = "turn_on" if state == "on" else "turn_off"
-        service_data = {"entity_id": entity_id}
         
-        if self._call_service(domain, service, service_data):
-            return f"Okay, the device is now {state}."
+        if self._call_service(domain, service, {"entity_id": entity_id}):
+            return {"status": "success", "message": f"Okay, the {device_name} is now {state}."}
         else:
-            return "I had trouble controlling that device."
+            return {"status": "error", "message": f"I had trouble controlling the {device_name}."}
 
-    # --- NEW FUNCTION FOR CLIMATE ---
-    def set_thermostat(self, entity_id: str, temperature: int) -> str:
+    def set_thermostat(self, device_name: str, temperature: int, **kwargs) -> dict:
         """Sets the temperature for a climate entity."""
+        entity_id = get_entity_id(device_name)
+        if not entity_id or 'climate' not in entity_id:
+             return {"status": "failed", "message": f"I can't find a thermostat called '{device_name}'."}
+
         service_data = {"entity_id": entity_id, "temperature": temperature}
         if self._call_service("climate", "set_temperature", service_data):
-            return f"Okay, I've set the temperature to {temperature} degrees."
+            return {"status": "success", "message": f"Okay, I've set the {device_name} to {temperature} degrees."}
         else:
-            return "I had trouble setting the thermostat."
+            return {"status": "error", "message": "I had trouble setting the thermostat."}
 
-    
-    def get_entity_state(self, entity_id: str) -> str | None:
-        """Gets the current state of any entity from Home Assistant."""
-        api_url = f"{self.base_url}/api/states/{entity_id}"
-        try:
-            response = requests.get(api_url, headers=self.headers, timeout=5)
-            response.raise_for_status()
-            return response.json().get("state")
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to get state for {entity_id}: {e}")
-            return None
-
-# Create a single instance of the service
 ha_service = HomeAssistantService()

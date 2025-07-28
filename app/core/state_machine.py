@@ -1,241 +1,202 @@
-from enum import Enum, auto
+import asyncio
 import time
+from enum import Enum, auto
 
-from app.core.logger import get_logger
 from app.core.config import get_settings
+from app.core.logger import get_logger
 from app.core.session import session_manager
-from app.services.wake_word import WakeWordEngine
-# --- Import the new NLU service ---
-from app.services.intent_recognizer import detect_intent_with_context
-from app.services.speech_to_text import listen_for_verification, listen_command, confirm_action
-from app.services.text_to_speech import speak, speak_translation
 from app.services.action_dispatcher import dispatch_action
-from app.services.feedback_manager import feedback
-from app.services.translator_service import translator_service
+# V3: Import the new unified speech service
+from app.services.speech_service import speak, listen_command, confirm_action
+from app.services.intent_recognizer import detect_intent_with_context
+from app.services.wake_word import WakeWordEngine
 
 logger = get_logger(__name__)
 settings = get_settings()
 
+
 class AssistantState(Enum):
-    IDLE = auto()
-    WOKE_UP = auto()
-    AUTHENTICATING = auto()
-    LISTENING = auto()
-    # --- NEW STATES ---
-    PROCESSING = auto()
-    AWAITING_CONFIRMATION = auto()
-    EXECUTING = auto()
-    TRANSLATING = auto()
+    """Defines the possible states of the voice assistant for V3."""
+    IDLE = auto()                     # Waiting for the wake word.
+    LISTENING = auto()                # Actively listening for a user command.
+    PROCESSING = auto()               # Analyzing the command with the NLU engine.
+    EXECUTING = auto()                # Performing the requested action.
+    AWAITING_INFORMATION = auto()     # Waiting for user to provide missing details (slot-filling).
+    AWAITING_CONFIRMATION = auto()    # Waiting for a 'yes' or 'no' from the user.
+
 
 class VoiceAssistantStateMachine:
+    """
+    Manages the state and conversational flow of the V3 voice assistant.
+    This version is designed to be conversational, resilient, and intelligent.
+    """
+
     def __init__(self):
         self.state = AssistantState.IDLE
         self.wake_word_engine = WakeWordEngine()
-        # --- NEW: Temp storage for data between states ---
+        # V3 Conversational State Tracking
         self.current_command: str | None = None
         self.nlu_result: dict | None = None
+        self.in_progress_command: dict | None = None  # Stores partial commands for slot-filling
 
     def run(self):
-        logger.info("State machine started. Initial state: IDLE")
-        while True:
-            try:
-                # --- ADDED The new state handlers to the main loop ---
-                if self.state == AssistantState.IDLE: self._handle_idle_state()
-                elif self.state == AssistantState.WOKE_UP: self._handle_woke_up_state()
-                elif self.state == AssistantState.AUTHENTICATING: self._handle_authenticating_state()
-                elif self.state == AssistantState.LISTENING: self._handle_listening_state()
-                elif self.state == AssistantState.PROCESSING: self._handle_processing_state()
-                elif self.state == AssistantState.AWAITING_CONFIRMATION: self._handle_awaiting_confirmation_state()
-                elif self.state == AssistantState.EXECUTING: self._handle_executing_state()
-                elif self.state == AssistantState.TRANSLATING: self._handle_translating_state()
+        """Starts the main event loop for the state machine."""
+        logger.info("V3 State Machine started. Initial state: IDLE")
+        # For V3, we use asyncio to handle asynchronous operations like STT/TTS
+        asyncio.run(self._main_loop())
+
+    async def _main_loop(self):
+        """The core asynchronous event loop."""
+        try:
+            while True:
+                if self.state == AssistantState.IDLE:
+                    await self._handle_idle_state()
+                elif self.state == AssistantState.LISTENING:
+                    await self._handle_listening_state()
+                elif self.state == AssistantState.PROCESSING:
+                    await self._handle_processing_state()
+                elif self.state == AssistantState.AWAITING_INFORMATION:
+                    await self._handle_awaiting_information_state()
+                elif self.state == AssistantState.AWAITING_CONFIRMATION:
+                    await self._handle_awaiting_confirmation_state()
+                elif self.state == AssistantState.EXECUTING:
+                    await self._handle_executing_state()
                 
-                time.sleep(0.1)
+                await asyncio.sleep(0.1)
+        except KeyboardInterrupt:
+            logger.warning("Shutdown signal received. Exiting state machine.")
+            speak("Shutting down. Goodbye, sir.")
+            self.wake_word_engine.release()
+        except Exception as e:
+            logger.exception("A critical error occurred in the state machine loop.")
+            speak("A critical error occurred. Please check the logs. I will now restart.")
+            self._reset_conversation()
+            self.state = AssistantState.IDLE # Attempt to recover by going idle
 
-            except KeyboardInterrupt:
-                # ... (this part remains the same)
-                logger.warning("Shutdown signal received. Exiting state machine.")
-                speak("Shutting down. Goodbye!")
-                self.wake_word_engine.release()
-                break
-            except Exception:
-                # ... (this part remains the same)
-                logger.exception("An unhandled error occurred in the state machine loop.")
-                feedback.error("A critical error occurred. Please check the logs. Restarting.")
-                self.state = AssistantState.IDLE
+    def _reset_conversation(self):
+        """Clears all temporary conversational state."""
+        logger.info("Resetting conversation context.")
+        self.current_command = None
+        self.nlu_result = None
+        self.in_progress_command = None
+        session_manager.clear_context()
 
-    # --- IDLE and WOKE_UP states are unchanged ---
-    def _handle_idle_state(self):
-        self.wake_word_engine.listen()
-        self.state = AssistantState.WOKE_UP
+    async def _handle_idle_state(self):
+        """Waits for the wake word to be detected."""
+        self._reset_conversation() # Ensure clean state before listening for wake word
+        await asyncio.to_thread(self.wake_word_engine.listen) # Run blocking listen in a thread
+        speak("Yes, sir?")
+        self.state = AssistantState.LISTENING
 
-    def _handle_woke_up_state(self):
-        #speak("Yes?")
-        # --- MODIFICATION: Use a chime instead of voice ---
-        feedback.acknowledge()
-        if settings.AUTH_ENABLED: self.state = AssistantState.AUTHENTICATING
-        else: self.state = AssistantState.LISTENING
-
-    # --- AUTHENTICATING state is unchanged ---
-    def _handle_authenticating_state(self):
-        """Records a short audio clip and verifies the user's voice."""
-        logger.info("State: AUTHENTICATING. Awaiting voice sample for verification.")
-
-        # --- ADD THIS LINE ---
-        feedback.confirm("Please say a short phrase for voice verification.")
-        audio_data = listen_for_verification(duration=3) 
-
-        if audio_data is None:
-            logger.warning("No audio captured for verification. Entering Guest Mode.")
-            session_manager.access_level = "guest"
-            feedback.error("I couldn't hear you. Entering guest mode.")
-            self.state = AssistantState.LISTENING
-            return
-
-        if session_manager.verify_voice(audio_data):
-            #speak("Identity confirmed.")
-            # --- MODIFICATION: Use feedback.success ---
-            session_manager.access_level = "private"
-            feedback.success("Identity confirmed. Welcome, sir.")
-            self.state = AssistantState.LISTENING
-            
-        else:
-            session_manager.access_level = "guest"
-            feedback.error("I don't recognize your voice. Entering guest mode with limited access.")
-            self.state = AssistantState.LISTENING
-
-    # --- LISTENING state is now simpler ---
-    def _handle_listening_state(self):
-        """Listens for a command and transitions to PROCESSING."""
+    async def _handle_listening_state(self):
+        """Listens for a command and transitions to processing."""
         logger.info("State: LISTENING. Ready for user command.")
-        # --- MODIFICATION: Use feedback.confirm ---
-        feedback.confirm("How can I help you?")
-        command = listen_command()
+        
+        # We don't say "How can I help?" if we just asked a clarifying question
+        if self.state != AssistantState.AWAITING_INFORMATION:
+            # speak("How can I help?") # This can be made more dynamic later
+            pass
+
+        command = await listen_command()
 
         if command:
             self.current_command = command
             self.state = AssistantState.PROCESSING
         else:
-            logger.warning("No command heard. Returning to IDLE state.")
-            #speak("I didn't catch that. Going back to sleep.")
-            self.state = AssistantState.IDLE
-    
-    # --- NEW: PROCESSING state with confidence logic ---
-    def _handle_processing_state(self):
-        """Processes the command using NLU and routes based on confidence."""
+            logger.warning("No command heard.")
+            if self.in_progress_command:
+                speak("Sorry, I didn't catch that.")
+                self.state = AssistantState.LISTENING # Retry listening for the missing info
+            else:
+                speak("Going back to sleep.")
+                self.state = AssistantState.IDLE # Only go idle if no conversation is active
+
+    async def _handle_processing_state(self):
+        """Processes the command using the NLU and routes to the next state."""
         logger.info(f"State: PROCESSING. Analyzing command: '{self.current_command}'")
         history = session_manager.get_formatted_history()
-        self.nlu_result = detect_intent_with_context(self.current_command, history)
+
+        if self.in_progress_command:
+            history.insert(0, self.in_progress_command)
+
+        self.nlu_result = await detect_intent_with_context(self.current_command, history)
         
+        intent = self.nlu_result.get('intent', 'unsupported')
         confidence = self.nlu_result.get('confidence', 0.0)
-        intent = self.nlu_result.get('intent', 'unknown')
+        missing_entities = self.nlu_result.get('missing_entities', [])
 
-        # --- NEW: Handle state-changing meta-commands before the dispatcher ---
-        if intent == 'start_translation':
-            logger.info("Transitioning to TRANSLATING state.")
-            self.state = AssistantState.TRANSLATING
-            return # Exit early, no need to dispatch
+        if intent == 'user_frustrated':
+            speak(self.nlu_result.get('response_suggestion', "My apologies for the difficulty. Let's try again."))
+            self._reset_conversation()
+            self.state = AssistantState.LISTENING
+            return
 
-        # Add to context only if intent is valid and not a meta-command
-        if intent not in ['unknown', 'unsupported', 'nlu_error', 'start_translation']:
+        # V3: New conversational logic
+        if confidence < 0.65: # Stricter confidence threshold
+            speak("I'm not quite sure what you mean. Could you rephrase that?")
+            self._reset_conversation()
+            self.state = AssistantState.LISTENING # CRITICAL: Return to LISTENING, not IDLE
+        elif missing_entities:
+            self.in_progress_command = self.nlu_result
             session_manager.add_to_context(self.nlu_result)
-
-        # Confidence-based routing
-        if confidence >= 0.9:
-            logger.info(f"High confidence ({confidence:.2f}). Executing directly.")
-            self.state = AssistantState.EXECUTING
-        elif 0.7 <= confidence < 0.9:
-            logger.info(f"Medium confidence ({confidence:.2f}). Asking for confirmation.")
-            self.state = AssistantState.AWAITING_CONFIRMATION
+            self.state = AssistantState.AWAITING_INFORMATION
         else:
-            logger.warning(f"Low confidence ({confidence:.2f}) or unsupported intent. Re-prompting.")
-            if intent == 'unsupported':
-                feedback.confirm("I'm not sure how to help with that. Please try rephrasing your request.")
+            session_manager.add_to_context(self.nlu_result)
+            # Check for actions that require explicit confirmation
+            if intent in ['schedule_meeting', 'summon_person']:
+                 self.state = AssistantState.AWAITING_CONFIRMATION
             else:
-                feedback.confirm("I'm not quite sure what you mean. Could you say that again?")
-            self.state = AssistantState.IDLE
+                 self.state = AssistantState.EXECUTING
 
-    # --- NEW: AWAITING_CONFIRMATION state ---
-    def _handle_awaiting_confirmation_state(self):
-        """Asks the user to confirm an action."""
+
+    async def _handle_awaiting_information_state(self):
+        """Asks the user for missing information to fill slots."""
+        logger.info("State: AWAITING_INFORMATION.")
+        prompt = self.in_progress_command.get('response_suggestion', "I need a bit more information, sir.")
+        speak(prompt)
+        self.state = AssistantState.LISTENING
+
+    async def _handle_awaiting_confirmation_state(self):
+        """Asks the user for a 'yes' or 'no' confirmation before executing a critical action."""
         logger.info("State: AWAITING_CONFIRMATION.")
-        intent_phrase = self.nlu_result.get('intent', 'the action').replace('_', ' ')
         
-        feedback.confirm(f"Just to be sure, you want me to {intent_phrase}. Is that correct?")
+        # Use the smart suggestion from the new NLU prompt
+        prompt = self.nlu_result.get('response_suggestion', "Should I proceed?")
+        speak(prompt)
         
-        if confirm_action(): # This should be a function in STT that listens for "yes" or "no"
+        if await confirm_action():
             logger.info("User confirmed action.")
             self.state = AssistantState.EXECUTING
         else:
             logger.info("User denied action.")
-            feedback.success("My mistake. Cancelling the action.")
-            self.state = AssistantState.IDLE
+            speak("Understood. Cancelling the action.")
+            self._reset_conversation()
+            self.state = AssistantState.LISTENING # Go back to listening for a new command
 
-  
-    
-    def _handle_executing_state(self):
+    async def _handle_executing_state(self):
         """Calls the action dispatcher and speaks the result."""
         logger.info(f"State: EXECUTING. Passing action to dispatcher: {self.nlu_result}")
         
-        # Call the dispatcher with the NLU result
-        
-        result_message = dispatch_action(
+        result = await dispatch_action(
             nlu_result=self.nlu_result,
             access_level=session_manager.access_level 
         )
-        
-        # Speak the result returned by the service
-        #speak(result_message)
-        if "Okay" in result_message or "Done" in result_message:
-            feedback.acknowledge()
-        else:
-            feedback.success(result_message)
-        logger.info(f"Action executed: {result_message}")
-        
 
-        # Reset for the next loop
-        self.current_command = None
-        self.nlu_result = None
-        self.state = AssistantState.IDLE
-        
-
-    # --- NEW METHOD: The translator mode loop ---
-    def _handle_translating_state(self):
-        """Handles the continuous translation mode."""
-        feedback.success("Translation mode activated. I will now translate between English and Arabic.")
-        
-        while True:
-            # 1. Listen for any speech
-            text_to_translate = listen_command(timeout=30) # Use a longer timeout
-
-            if not text_to_translate:
-                logger.info("No speech detected in translation mode.")
-                continue
-
-            # 2. Check for the exit command
-            if "stop translation" in text_to_translate.lower():
-                feedback.success("Exiting translation mode.")
-                self.state = AssistantState.IDLE
-                break # Exit the translation loop
-
-            # 3. Detect language
-            source_lang = translator_service.detect_language(text_to_translate)
-            if not source_lang:
-                feedback.error("Sorry, I couldn't determine the language.")
-                continue
-
-            # 4. Determine target language and translate
-            if 'en' in source_lang:
-                target_lang = 'ar'
-            elif 'ar' in source_lang:
-                target_lang = 'en'
-            else:
-                feedback.confirm("I can only translate between English and Arabic.")
-                continue
+        # The new dispatcher returns a dict. We handle different statuses.
+        if isinstance(result, dict):
+            status = result.get("status")
+            message = result.get("message", "An unexpected error occurred.")
             
-            translated_text = translator_service.translate(text_to_translate, target_lang)
+            speak(message)
 
-            # 5. Speak the translation in the target language's voice
-            if translated_text:
-                speak_translation(translated_text, lang=target_lang)
-            else:
-                feedback.error("Sorry, I was unable to get a translation.")
+            if status == "conflict":
+                # If there's a conflict, we need to ask the user what to do next.
+                self.state = AssistantState.AWAITING_CONFIRMATION
+                return # Skip the conversation reset for now
+        else:
+            # Fallback for older services that return a string
+            speak(result)
+
+        logger.info(f"Action executed. Result: {result}")
+        self._reset_conversation()
+        self.state = AssistantState.LISTENING # Ready for the next command
