@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     VOICE_AUTH_THRESHOLD: float = 0.65
 
     # --- AZURE TRANSLATOR ---
-    AZURE_TRANSLATOR_KEY: str ="1Wry3RrRuk6eKp62trVIQ44OnoRukTUNs38JasEETHMibPuJFtKPJQQJ99BEACYeBjFXJ3w3AAAbACOGoa9p"
+    AZURE_TRANSLATOR_KEY: str =""
     AZURE_REGION: str ="eastus" # e.g., eastus
     TRANSLATE_ENDPOINT: str ="https://api.cognitive.microsofttranslator.com"
 
