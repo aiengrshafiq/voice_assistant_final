@@ -1,4 +1,4 @@
-import asyncio
+# app/services/intent_recognizer.py
 import openai
 import datetime
 import json
@@ -8,57 +8,61 @@ from app.utils.prompt_templates import get_nlu_prompt_template
 
 logger = get_logger(__name__)
 settings = get_settings()
-openai.api_key = settings.OPENAI_API_KEY
+client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
-# V3: The function is now asynchronous to work with the new state machine
 async def detect_intent_with_context(command: str, history: list) -> dict:
-    """
-    V3: Asynchronously detects intent using the conversational NLU prompt.
-
-    Args:
-        command: The user's latest voice command as text.
-        history: A list of recent conversation turn dictionaries.
-
-    Returns:
-        A dictionary containing the structured NLU result.
-    """
-    
     prompt_template = get_nlu_prompt_template()
-
-    # V3: Simplified formatting for the new prompt
     now = datetime.datetime.now().strftime("%A, %Y-%m-%d %H:%M:%S")
     formatted_history = json.dumps(history, indent=2)
-
-    prompt = prompt_template.format(
-        current_time=now,
-        history=formatted_history,
-        command=command
-    )
+    prompt = prompt_template.format(current_time=now, history=formatted_history, command=command)
 
     try:
         logger.info("Sending request to LLM for NLU processing...")
-        response = await openai.chat.completions.create(
-            # gpt-4o is faster and cheaper than turbo, ideal for this use case
-            model="gpt-4o", 
+        response = await client.chat.completions.create(
+            model="gpt-4o",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant that only responds in a single, well-formed JSON object."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.1,
-            response_format={"type": "json_object"} # Force JSON mode
+            response_format={"type": "json_object"}
         )
-        
         response_content = response.choices[0].message.content
-        logger.info(f"LLM Response received: {response_content}")
-        
-        nlu_result = json.loads(response_content)
-        nlu_result['user_command'] = command # Ensure command is always in the result
-        
-        return nlu_result
-
-    except json.JSONDecodeError:
-        logger.error("Failed to decode JSON response from LLM.")
-        return {"intent": "nlu_error", "message": "Invalid JSON response", "user_command": command}
+        return json.loads(response_content)
     except Exception as e:
-        logger.exception(f"An error occurred while calling the OpenAI API: {e}")
+        logger.error(f"An error occurred while calling the OpenAI API: {e}")
         return {"intent": "nlu_error", "message": str(e), "user_command": command}
+
+async def is_confirmed(command: str) -> bool:
+    """Uses the LLM to intelligently determine if a user's response is an affirmation."""
+    if not command:
+        return False
+        
+    prompt = f"""
+    The user was asked a yes/no confirmation question. Their response was: "{command}"
+    Analyze the sentiment and content of the response.
+    Respond with a single JSON object with one key, "confirmed", which is a boolean value.
+    Examples:
+    - "Yes, please do" -> {{"confirmed": true}}
+    - "Correct" -> {{"confirmed": true}}
+    - "No, cancel that" -> {{"confirmed": false}}
+    - "Stop" -> {{"confirmed": false}}
+    - "What is the weather?" -> {{"confirmed": false}}
+    """
+    try:
+        logger.info(f"Sending request to LLM for confirmation processing: '{command}'")
+        response = await client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that only responds in JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.0,
+            response_format={"type": "json_object"}
+        )
+        result = json.loads(response.choices[0].message.content)
+        logger.info(f"Confirmation result: {result}")
+        return result.get("confirmed", False)
+    except Exception as e:
+        logger.error(f"An error occurred during confirmation check: {e}")
+        return False

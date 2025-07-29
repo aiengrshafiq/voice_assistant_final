@@ -1,7 +1,9 @@
 # app/services/daily_briefing.py
-# V3: Import from the new unified speech service and updated calendar service
 from app.services.speech_service import speak
 from app.services.calendar_service import calendar_service
+# THE FIX: Added the missing import for the logger
+from app.core.logger import get_logger
+
 # You would also import your weather service here
 # from app.utils.weather import get_current_weather
 
@@ -10,6 +12,7 @@ logger = get_logger(__name__)
 def deliver_daily_briefing(**kwargs) -> dict:
     """V3: Delivers the daily briefing and returns a result dictionary."""
     try:
+        # The speak() calls are synchronous and will be handled by the state machine's thread executor
         speak("Good morning, sir. Here is your daily briefing.")
 
         # 1. Calendar

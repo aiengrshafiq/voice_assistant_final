@@ -2,7 +2,7 @@
 import datetime as dt
 import os.path
 import humanize
-from pendulum import parse as pendulum_parse
+from pendulum import parse as pendulum_parse, from_format
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -14,13 +14,11 @@ logger = get_logger(__name__)
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
 def format_datetime_for_speech(iso_string):
-    """Converts ISO datetime string to a human-friendly format."""
     if not iso_string: return "an unspecified time"
     try:
         dt_obj = pendulum_parse(iso_string)
         return humanize.naturaltime(dt_obj)
-    except Exception:
-        return "an unspecified time"
+    except Exception: return "an unspecified time"
 
 class CalendarService:
     def __init__(self):
@@ -32,19 +30,13 @@ class CalendarService:
             creds = Credentials.from_authorized_user_file("token.json", SCOPES)
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
-                try:
-                    logger.info("Google Calendar token has expired. Refreshing...")
-                    creds.refresh(Request())
-                except Exception as e:
-                    logger.error(f"Failed to refresh token: {e}. Re-authenticating.")
+                try: creds.refresh(Request())
+                except Exception:
                     if os.path.exists("token.json"): os.remove("token.json")
                     return self._initiate_auth_flow()
-            else:
-                creds = self._initiate_auth_flow()
+            else: creds = self._initiate_auth_flow()
             if creds:
-                with open("token.json", "w") as token:
-                    token.write(creds.to_json())
-                logger.info("Google Calendar token saved successfully.")
+                with open("token.json", "w") as token: token.write(creds.to_json())
         return creds
 
     def _initiate_auth_flow(self) -> Credentials | None:
@@ -54,70 +46,55 @@ class CalendarService:
         flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
         return flow.run_local_server(port=0)
 
-    def get_upcoming_events(self, count: int = 5) -> dict:
-        if not self.creds:
-            return {"status": "error", "message": "Calendar authentication failed."}
+    def get_upcoming_events(self, **kwargs) -> dict:
+        if not self.creds: return {"status": "error", "message": "Calendar authentication failed."}
         try:
             service = build("calendar", "v3", credentials=self.creds)
             now = dt.datetime.utcnow().isoformat() + "Z"
-            events_result = service.events().list(
-                calendarId="primary", timeMin=now, maxResults=count,
-                singleEvents=True, orderBy="startTime"
-            ).execute()
+            events_result = service.events().list(calendarId="primary", timeMin=now, maxResults=5, singleEvents=True, orderBy="startTime").execute()
             events = events_result.get("items", [])
-            if not events:
-                return {"status": "success", "message": "Your calendar is clear."}
-            
+            if not events: return {"status": "success", "message": "Your calendar is clear."}
             response_str = "Here are your next few events: "
             for event in events:
                 start = event["start"].get("dateTime", event["start"].get("date"))
                 friendly_time = format_datetime_for_speech(start)
                 response_str += f"{event['summary']} {friendly_time}. "
             return {"status": "success", "message": response_str}
-        except HttpError as error:
-            logger.error(f"Google Calendar API error: {error}")
+        except Exception as e:
+            logger.error(f"Google Calendar API error: {e}")
             return {"status": "error", "message": "I couldn't fetch your calendar events."}
 
-    def create_event(self, summary: str, start_time: str, end_time: str, **kwargs) -> dict:
-        """
-        V3: Creates an event after checking for conflicts and returns a result dictionary.
-        """
-        if not self.creds:
-            return {"status": "error", "message": "Authentication failed."}
+    def create_event(self, summary: str, start_time: str, end_time: str = None, attendees: str = None, **kwargs) -> dict:
+        """Siri-like behavior: Creates an event and handles a missing end_time."""
+        if not self.creds: return {"status": "error", "message": "Authentication failed."}
         
         try:
             service = build("calendar", "v3", credentials=self.creds)
+            
+            event_summary = summary
+            if attendees and summary: event_summary = f"{summary} with {attendees}"
+            elif attendees and not summary: event_summary = f"Meeting with {attendees}"
 
-            # 1. Check for conflicting events
-            events_result = service.events().list(
-                calendarId='primary', timeMin=start_time, timeMax=end_time, singleEvents=True
-            ).execute()
-            conflicting_events = [e for e in events_result.get('items', []) if e.get('status') != 'cancelled']
+            # THE FIX: If end_time is missing, calculate a default 30-minute duration.
+            if not end_time:
+                start_dt = pendulum_parse(start_time)
+                end_dt = start_dt.add(minutes=30)
+                end_time = end_dt.to_iso8601_string()
+                logger.info(f"End time not provided. Defaulting to {end_time}")
 
-            if conflicting_events:
-                conflict = conflicting_events[0]
-                conflict_summary = conflict['summary']
-                conflict_time = format_datetime_for_speech(conflict['start'].get('dateTime'))
-                message = f"Sir, that time conflicts with '{conflict_summary}' which is {conflict_time}. Should I schedule this new meeting anyway?"
-                return {"status": "conflict", "message": message}
-
-            # 2. No conflicts, create the event
             event_body = {
-                "summary": summary,
+                "summary": event_summary,
                 "start": {"dateTime": start_time, "timeZone": "Asia/Dubai"},
                 "end": {"dateTime": end_time, "timeZone": "Asia/Dubai"},
             }
-            created_event = service.events().insert(calendarId="primary", body=event_body).execute()
-            logger.info(f"Event created: {created_event.get('htmlLink')}")
             
-            # 3. Return a rich success message
+            service.events().insert(calendarId="primary", body=event_body).execute()
+            
             friendly_time = format_datetime_for_speech(start_time)
-            return {
-                "status": "success",
-                "message": f"Done. I've scheduled '{summary}' for {friendly_time}."
-            }
-        except Exception as e:
-            logger.exception(f"Failed to create calendar event: {e}")
-            return {"status": "error", "message": "I ran into an API error while creating the event."}
+            return {"status": "success", "message": f"Done. I've scheduled '{event_summary}' for {friendly_time}."}
+        
+        except HttpError as e:
+            logger.exception(f"Failed to create calendar event due to API error: {e}")
+            return {"status": "error", "message": "I ran into a Google Calendar API error."}
 
 calendar_service = CalendarService()

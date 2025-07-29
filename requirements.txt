@@ -29,3 +29,6 @@ python-Levenshtein # Often needed by thefuzz for better performance
 #sudo apt-get update && sudo apt-get install mpg123
 
 #pip install deepgram-sdk "openai[whisper]" piper-tts
+
+#humanize pendulum
+#pip install -U SpeechRecognition openai-whisper
