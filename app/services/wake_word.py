@@ -16,7 +16,8 @@ class WakeWordEngine:
             keyword_path = os.path.join("models", "porcupine", f"{settings.WAKE_WORD}_raspberry-pi.ppn")
             self._porcupine = pvporcupine.create(
                 access_key=settings.PORCUPINE_ACCESS_KEY,
-                keyword_paths=[os.path.abspath(keyword_path)]
+                keyword_paths=[os.path.abspath(keyword_path)],
+                sensitivities=[0.4]
             )
             self._pa = pyaudio.PyAudio()
             self._stream = self._pa.open(

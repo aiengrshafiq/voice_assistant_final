@@ -40,6 +40,13 @@ class Settings(BaseSettings):
 
     # The new performance toggle
     USE_EXPERIMENTAL_STT: bool = False
+    DB_PATH: str = "assistant.db"
+
+    TTS_PROVIDER: str ="elevenlabs" # Use 'elevenlabs' or 'gtts'
+    ELEVENLABS_API_KEY: str
+    # Find Voice IDs in your ElevenLabs Voice Lab
+    ELEVENLABS_VOICE_ID_EN: str
+    ELEVENLABS_VOICE_ID_AR: str
 
     class Config:
         env_file = ".env"
